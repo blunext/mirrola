@@ -143,9 +143,13 @@ func modifyLinks(n *html.Node, currentURL, baseURL string) []string {
 					// Convert link to absolute
 					absLink, err := resolveURL(currentURL, original)
 					if err == nil && isSameDomain(absLink.String(), baseURL) {
-						// If it's a static asset with query, rewrite the URL
-						if absLink.RawQuery != "" && isStaticAsset(absLink.String()) {
-							absLink = rewriteAssetURL(absLink)
+						// If URL has query parameters, rewrite based on whether it's an asset or page
+						if absLink.RawQuery != "" {
+							if isStaticAsset(absLink.String()) {
+								absLink = rewriteAssetURL(absLink)
+							} else {
+								absLink = rewritePageURL(absLink)
+							}
 						}
 						foundLinks = append(foundLinks, absLink.String())
 						// Replace link with relative
@@ -214,6 +218,43 @@ func rewriteAssetURL(u *url.URL) *url.URL {
 	return u
 }
 
+// rewritePageURL integrates query parameters into the filename for pages.
+// Example: /?p=111 -> /index_p_111.html
+func rewritePageURL(u *url.URL) *url.URL {
+	if u.RawQuery == "" {
+		return u
+	}
+
+	ext := filepath.Ext(u.Path)
+	if ext == "" {
+		if u.Path == "" || u.Path == "/" {
+			u.Path = "/index.html"
+			ext = ".html"
+		} else {
+			if !strings.HasSuffix(u.Path, "/") {
+				u.Path += "/"
+			}
+			u.Path += "index.html"
+			ext = ".html"
+		}
+	}
+
+	dir := filepath.Dir(u.Path)
+	base := filepath.Base(u.Path)
+	name := strings.TrimSuffix(base, ext)
+
+	safeQuery := u.RawQuery
+	safeQuery = strings.ReplaceAll(safeQuery, "&", "_")
+	safeQuery = strings.ReplaceAll(safeQuery, "=", "_")
+	safeQuery = strings.ReplaceAll(safeQuery, "?", "_")
+
+	base = name + "_" + safeQuery + ext
+	u.Path = filepath.Join(dir, base)
+	u.RawQuery = ""
+
+	return u
+}
+
 func sanitizeQueryPart(s string) string {
 	s = strings.ReplaceAll(s, "=", "_")
 	s = strings.ReplaceAll(s, "?", "_")
@@ -246,9 +287,10 @@ func processInlineStyle(style, currentURL, baseURL string) (string, []string) {
 			return match
 		}
 		if isSameDomain(absLink.String(), baseURL) {
-			// Rewrite if it's a static asset with query
 			if absLink.RawQuery != "" && isStaticAsset(absLink.String()) {
 				absLink = rewriteAssetURL(absLink)
+			} else if absLink.RawQuery != "" {
+				absLink = rewritePageURL(absLink)
 			}
 			foundLinks = append(foundLinks, absLink.String())
 			relativeURL := convertToRelative(absLink.String(), baseURL)
@@ -272,9 +314,10 @@ func processInlineCSS(css, currentURL, baseURL string) (string, []string) {
 			return match
 		}
 		if isSameDomain(absLink.String(), baseURL) {
-			// Rewrite if it's a static asset with query
 			if absLink.RawQuery != "" && isStaticAsset(absLink.String()) {
 				absLink = rewriteAssetURL(absLink)
+			} else if absLink.RawQuery != "" {
+				absLink = rewritePageURL(absLink)
 			}
 			foundLinks = append(foundLinks, absLink.String())
 			relativeURL := convertToRelative(absLink.String(), baseURL)
@@ -304,6 +347,7 @@ func isSameDomain(link, base string) bool {
 	return u.Host == bu.Host
 }
 
+// isStaticAsset checks if the link points to a known static asset extension
 func isStaticAsset(link string) bool {
 	u, err := url.Parse(link)
 	if err != nil {
@@ -376,10 +420,13 @@ func getOutputPath(link string) string {
 		}
 	}
 
-	// If there is a query string, rewrite it in the same manner
-	if u.RawQuery != "" && isStaticAsset(u.String()) {
-		u = rewriteAssetURL(u)
-		// Rebuild path with new URL after rewrite
+	// If there are query parameters, rewrite the URL accordingly
+	if u.RawQuery != "" {
+		if isStaticAsset(u.String()) {
+			u = rewriteAssetURL(u)
+		} else {
+			u = rewritePageURL(u)
+		}
 		path = u.Path
 	}
 
