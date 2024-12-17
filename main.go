@@ -143,6 +143,7 @@ func modifyLinks(n *html.Node, currentURL, baseURL string) []string {
 					// Convert link to absolute
 					absLink, err := resolveURL(currentURL, original)
 					if err == nil && isSameDomain(absLink.String(), baseURL) {
+						foundLinks = append(foundLinks, absLink.String())
 						// If URL has query parameters, rewrite based on whether it's an asset or page
 						if absLink.RawQuery != "" {
 							if isStaticAsset(absLink.String()) {
@@ -151,7 +152,6 @@ func modifyLinks(n *html.Node, currentURL, baseURL string) []string {
 								absLink = rewritePageURL(absLink)
 							}
 						}
-						foundLinks = append(foundLinks, absLink.String())
 						// Replace link with relative
 						rel := convertToRelative(absLink.String(), baseURL)
 						node.Attr[i].Val = rel
@@ -281,18 +281,18 @@ func processInlineStyle(style, currentURL, baseURL string) (string, []string) {
 		if len(urls) < 2 {
 			return match
 		}
-		u := urls[1]
-		absLink, err := resolveURL(currentURL, u)
+		originalLink := urls[1]
+		absLink, err := resolveURL(currentURL, originalLink)
 		if err != nil {
 			return match
 		}
 		if isSameDomain(absLink.String(), baseURL) {
+			foundLinks = append(foundLinks, absLink.String())
 			if absLink.RawQuery != "" && isStaticAsset(absLink.String()) {
 				absLink = rewriteAssetURL(absLink)
 			} else if absLink.RawQuery != "" {
 				absLink = rewritePageURL(absLink)
 			}
-			foundLinks = append(foundLinks, absLink.String())
 			relativeURL := convertToRelative(absLink.String(), baseURL)
 			return fmt.Sprintf("url('%s')", relativeURL)
 		}
@@ -308,18 +308,18 @@ func processInlineCSS(css, currentURL, baseURL string) (string, []string) {
 		if len(urls) < 2 {
 			return match
 		}
-		u := urls[1]
-		absLink, err := resolveURL(currentURL, u)
+		originalLink := urls[1]
+		absLink, err := resolveURL(currentURL, originalLink)
 		if err != nil {
 			return match
 		}
 		if isSameDomain(absLink.String(), baseURL) {
+			foundLinks = append(foundLinks, absLink.String())
 			if absLink.RawQuery != "" && isStaticAsset(absLink.String()) {
 				absLink = rewriteAssetURL(absLink)
 			} else if absLink.RawQuery != "" {
 				absLink = rewritePageURL(absLink)
 			}
-			foundLinks = append(foundLinks, absLink.String())
 			relativeURL := convertToRelative(absLink.String(), baseURL)
 			return fmt.Sprintf("url('%s')", relativeURL)
 		}
