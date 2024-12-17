@@ -32,7 +32,7 @@ var (
 )
 var (
 	tasksWg sync.WaitGroup
-	re      = regexp.MustCompile(`url\(['"]?(https?://[^'")]+)['"]?\)`)
+	re      = regexp.MustCompile(`url\(\s*['"]?\s*(https?://[^'")]+?)\s*['"]?\s*\)`)
 )
 
 func main() {
