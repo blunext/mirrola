@@ -26,6 +26,7 @@ var (
 		m map[string]bool
 	}{m: make(map[string]bool)}
 	re        = regexp.MustCompile(`url\(\s*['"]?\s*(https?://[^'")]+?)\s*['"]?\s*\)`)
+	logMutex  sync.Mutex
 	tasksWg   sync.WaitGroup
 	baseURL   *string
 	outputDir *string
@@ -36,35 +37,84 @@ func main() {
 	outputDir = flag.String("dir", "./output", "Output directory")
 	flag.Parse()
 
-	tasks := make(chan string, 10000)
+	enqueue := make(chan string)
+	dequeue := make(chan string)
+	done := make(chan struct{})
 
-	enqueueLink(*baseURL, tasks)
+	visited.m = make(map[string]bool)
 
-	go func() {
-		tasksWg.Wait()
-		close(tasks)
-	}()
+	go enqueueManager(enqueue, dequeue, done)
+
+	enqueueLink(*baseURL, enqueue)
 
 	var wg sync.WaitGroup
 	for i := 0; i < concurrency; i++ {
 		wg.Add(1)
-		go func() {
+		go func(id int) {
 			defer wg.Done()
-			for link := range tasks {
-				processLink(link, tasks)
-				tasksWg.Done() // Task completed
-			}
-		}()
+			worker(id, dequeue, enqueue)
+		}(i + 1)
 	}
 
-	// Wait for all workers to finish
+	// Close the enqueue channel after all tasks are completed
+	go func() {
+		tasksWg.Wait()
+		close(enqueue)
+	}()
+
+	// Wait for workers to finish
 	wg.Wait()
 
 	fmt.Println("Downloading completed.")
 }
 
-// enqueueLink adds a link to the channel if it has not been processed yet.
-func enqueueLink(link string, tasks chan<- string) {
+// enqueueManager manages the task queue
+func enqueueManager(enqueue <-chan string, dequeue chan<- string, done <-chan struct{}) {
+	queue := []string{}
+	for {
+		var activeEnqueue <-chan string
+		var nextTask string
+		var activeDequeue chan<- string
+
+		if len(queue) > 0 {
+			activeDequeue = dequeue
+			nextTask = queue[0]
+		}
+
+		// Allow reading from enqueue regardless of queue length
+		activeEnqueue = enqueue
+
+		select {
+		case task, ok := <-activeEnqueue:
+			if ok {
+				queue = append(queue, task)
+			} else {
+				activeEnqueue = nil
+			}
+		case activeDequeue <- nextTask:
+			queue = queue[1:]
+		case <-done:
+			return
+		}
+
+		// If the enqueue channel is closed and the queue is empty, finish
+		if activeEnqueue == nil && len(queue) == 0 {
+			close(dequeue)
+			return
+		}
+	}
+}
+
+// worker processes tasks from the dequeue channel
+func worker(id int, dequeue <-chan string, enqueue chan<- string) {
+	for link := range dequeue {
+		processLink(link, enqueue)
+		tasksWg.Done() // Task completed
+	}
+}
+
+// enqueueLink adds a link to the queue if it hasn't been processed yet
+func enqueueLink(link string, enqueue chan<- string) {
 	visited.Lock()
 	defer visited.Unlock()
 	if visited.m[link] {
@@ -72,32 +122,31 @@ func enqueueLink(link string, tasks chan<- string) {
 	}
 	visited.m[link] = true
 	tasksWg.Add(1)
-	fmt.Printf("[INFO] Enqueued link: %s\n", link)
-	tasks <- link
+	logInfo(fmt.Sprintf("[INFO] Enqueued link: %s\n", link))
+	enqueue <- link
 }
 
-// processLink checks if the link is an asset or a page and processes it accordingly
-func processLink(link string, tasks chan<- string) {
-	fmt.Printf("[INFO] Processing link: %s\n", link)
+// processLink checks if the link is a static asset or a page and processes it accordingly
+func processLink(link string, enqueue chan<- string) {
+	logInfo(fmt.Sprintf("[INFO] Processing link: %s\n", link))
 	if isStaticAsset(link) {
 		err := downloadAsset(link)
 		if err != nil {
-			fmt.Printf("[ERROR] Failed to download asset: %s - %v\n", link, err)
+			logError(fmt.Sprintf("[ERROR] Failed to download asset: %s - %v\n", link, err))
 		}
 	} else {
 		links, err := processPage(link)
 		if err != nil {
-			fmt.Printf("[ERROR] Failed to process page %s: %v\n", link, err)
+			logError(fmt.Sprintf("[ERROR] Failed to process page %s: %v\n", link, err))
 			return
 		}
 		for _, l := range links {
-			// we uss goroutine to avoid deadlock when the channel is full
-			go enqueueLink(l, tasks)
+			enqueueLink(l, enqueue)
 		}
 	}
 }
 
-// processPage downloads the HTML page, modifies links, saves it, and returns newly found links
+// processPage fetches the HTML page, modifies links, saves it, and returns new links
 func processPage(pageURL string) ([]string, error) {
 	resp, err := http.Get(pageURL)
 	if err != nil {
@@ -123,11 +172,12 @@ func processPage(pageURL string) ([]string, error) {
 		return nil, err
 	}
 
-	fmt.Printf("[INFO] Processed page: %s, found %d new link(s)\n", pageURL, len(pageLinks))
+	logInfo(fmt.Sprintf("[INFO] Processed page: %s, found %d new link(s)\n", pageURL, len(pageLinks)))
 
 	return pageLinks, nil
 }
 
+// modifyLinks modifies links in the HTML document and returns newly found links
 func modifyLinks(n *html.Node, currentURL, baseURL string) []string {
 	var foundLinks []string
 
@@ -142,7 +192,7 @@ func modifyLinks(n *html.Node, currentURL, baseURL string) []string {
 					absLink, err := resolveURL(currentURL, original)
 					if err == nil && isSameDomain(absLink.String(), baseURL) {
 						foundLinks = append(foundLinks, absLink.String())
-						// If URL has query parameters, rewrite based on whether it's an asset or page
+						// If the URL has query parameters, rewrite it
 						if absLink.RawQuery != "" {
 							if isStaticAsset(absLink.String()) {
 								absLink = rewriteAssetURL(absLink)
@@ -150,7 +200,7 @@ func modifyLinks(n *html.Node, currentURL, baseURL string) []string {
 								absLink = rewritePageURL(absLink)
 							}
 						}
-						// Replace link with relative
+						// Convert link to relative
 						rel := convertToRelative(absLink.String(), baseURL)
 						node.Attr[i].Val = rel
 					}
@@ -179,7 +229,7 @@ func modifyLinks(n *html.Node, currentURL, baseURL string) []string {
 	return foundLinks
 }
 
-// rewriteAssetURL transforms an asset URL by incorporating query parameters into the filename.
+// rewriteAssetURL transforms the static asset URL by integrating query parameters into the file name
 func rewriteAssetURL(u *url.URL) *url.URL {
 	if u.RawQuery == "" {
 		return u
@@ -193,14 +243,14 @@ func rewriteAssetURL(u *url.URL) *url.URL {
 
 	ext := filepath.Ext(u.Path)
 	if ext == "" {
-		// If no extension, just drop the query parameters
+		// If there's no extension, remove query parameters
 		u.RawQuery = ""
 		return u
 	}
 
 	baseName := strings.TrimSuffix(u.Path, ext)
 
-	// Build a suffix based on query parameters
+	// Building suffix based on query parameters
 	var parts []string
 	for key, values := range q {
 		for _, val := range values {
@@ -212,12 +262,11 @@ func rewriteAssetURL(u *url.URL) *url.URL {
 	suffix := strings.Join(parts, "_")
 
 	u.Path = baseName + "_" + suffix + ext
-	u.RawQuery = "" // remove original query
+	u.RawQuery = "" // remove original query parameters
 	return u
 }
 
-// rewritePageURL integrates query parameters into the filename for pages.
-// Example: /?p=111 -> /index_p_111.html
+// rewritePageURL integrates query parameters into the file name for pages
 func rewritePageURL(u *url.URL) *url.URL {
 	if u.RawQuery == "" {
 		return u
@@ -253,6 +302,7 @@ func rewritePageURL(u *url.URL) *url.URL {
 	return u
 }
 
+// sanitizeQueryPart removes or replaces special characters in parts of query parameters
 func sanitizeQueryPart(s string) string {
 	s = strings.ReplaceAll(s, "=", "_")
 	s = strings.ReplaceAll(s, "?", "_")
@@ -260,6 +310,7 @@ func sanitizeQueryPart(s string) string {
 	return s
 }
 
+// resolveURL resolves the link relative to the current URL
 func resolveURL(currentURL, link string) (*url.URL, error) {
 	base, err := url.Parse(currentURL)
 	if err != nil {
@@ -272,6 +323,7 @@ func resolveURL(currentURL, link string) (*url.URL, error) {
 	return base.ResolveReference(u), nil
 }
 
+// processInlineStyle processes the style attribute and returns the modified style and new links
 func processInlineStyle(style, currentURL, baseURL string) (string, []string) {
 	foundLinks := []string{}
 	newStyle := re.ReplaceAllStringFunc(style, func(match string) string {
@@ -299,6 +351,7 @@ func processInlineStyle(style, currentURL, baseURL string) (string, []string) {
 	return newStyle, foundLinks
 }
 
+// processInlineCSS processes the CSS content and returns the modified CSS and new links
 func processInlineCSS(css, currentURL, baseURL string) (string, []string) {
 	foundLinks := []string{}
 	newCSS := re.ReplaceAllStringFunc(css, func(match string) string {
@@ -326,6 +379,7 @@ func processInlineCSS(css, currentURL, baseURL string) (string, []string) {
 	return newCSS, foundLinks
 }
 
+// convertToRelative converts an absolute link to a relative one relative to baseURL
 func convertToRelative(link, base string) string {
 	if strings.HasPrefix(link, base) {
 		return strings.TrimPrefix(link, base)
@@ -333,6 +387,7 @@ func convertToRelative(link, base string) string {
 	return link
 }
 
+// isSameDomain checks if the link belongs to the same domain as baseURL
 func isSameDomain(link, base string) bool {
 	u, err := url.Parse(link)
 	if err != nil {
@@ -352,7 +407,6 @@ func isStaticAsset(link string) bool {
 		return false
 	}
 
-	// We only check the extension of the path, ignoring query parameters.
 	ext := strings.ToLower(filepath.Ext(u.Path))
 
 	exts := []string{".jpg", ".jpeg", ".png", ".gif", ".css", ".js", ".svg", ".webp", ".woff", ".woff2", ".ttf", ".ico"}
@@ -364,16 +418,17 @@ func isStaticAsset(link string) bool {
 	return false
 }
 
+// downloadAsset downloads the static asset and saves it in the appropriate location
 func downloadAsset(link string) error {
 	outputFile := getOutputPath(link)
 
 	// Check if the file already exists
 	if _, err := os.Stat(outputFile); err == nil {
-		fmt.Printf("[INFO] Asset already exists, skipping download: %s\n", outputFile)
+		logInfo(fmt.Sprintf("[INFO] Asset already exists, skipping download: %s\n", outputFile))
 		return nil
 	}
 
-	fmt.Printf("[INFO] Downloading asset: %s\n", link)
+	logInfo(fmt.Sprintf("[INFO] Downloading asset: %s\n", link))
 	resp, err := http.Get(link)
 	if err != nil {
 		return err
@@ -393,11 +448,12 @@ func downloadAsset(link string) error {
 
 	_, err = io.Copy(file, resp.Body)
 	if err == nil {
-		fmt.Printf("[INFO] Saved asset: %s -> %s\n", link, outputFile)
+		logInfo(fmt.Sprintf("[INFO] Saved asset: %s -> %s\n", link, outputFile))
 	}
 	return err
 }
 
+// getOutputPath generates the output path for the given link
 func getOutputPath(link string) string {
 	u, err := url.Parse(link)
 	if err != nil {
@@ -431,6 +487,7 @@ func getOutputPath(link string) string {
 	return filepath.Join(*outputDir, path)
 }
 
+// saveHTML saves the modified HTML document in the appropriate location
 func saveHTML(outputFile string, doc *html.Node) error {
 	err := os.MkdirAll(filepath.Dir(outputFile), 0755)
 	if err != nil {
@@ -446,7 +503,7 @@ func saveHTML(outputFile string, doc *html.Node) error {
 	return html.Render(file, doc)
 }
 
-// getTextContent retrieves text from a given <style> node
+// getTextContent retrieves text from the given <style> node
 func getTextContent(n *html.Node) string {
 	var sb strings.Builder
 	var g func(*html.Node)
@@ -462,9 +519,9 @@ func getTextContent(n *html.Node) string {
 	return sb.String()
 }
 
-// replaceTextContent removes existing text children and replaces them with new text
+// replaceTextContent removes existing text nodes and replaces them with new text
 func replaceTextContent(n *html.Node, newText string) {
-	// Remove existing text children
+	// Remove existing text nodes
 	for c := n.FirstChild; c != nil; {
 		next := c.NextSibling
 		if c.Type == html.TextNode {
@@ -472,9 +529,23 @@ func replaceTextContent(n *html.Node, newText string) {
 		}
 		c = next
 	}
-	// Add new text node
+	// Add a new text node
 	n.AppendChild(&html.Node{
 		Type: html.TextNode,
 		Data: newText,
 	})
+}
+
+// logInfo safely logs information
+func logInfo(message string) {
+	logMutex.Lock()
+	defer logMutex.Unlock()
+	fmt.Print(message)
+}
+
+// logError safely logs errors
+func logError(message string) {
+	logMutex.Lock()
+	defer logMutex.Unlock()
+	fmt.Print(message)
 }
