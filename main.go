@@ -38,7 +38,8 @@ func main() {
 
 	tasks := make(chan string, 10000)
 
-	// Goroutine that waits for tasksWg to reach 0 and then closes the channel
+	enqueueLink(*baseURL, tasks)
+
 	go func() {
 		tasksWg.Wait()
 		close(tasks)
@@ -55,9 +56,6 @@ func main() {
 			}
 		}()
 	}
-
-	// Add the first link (base page)
-	enqueueLink(*baseURL, tasks)
 
 	// Wait for all workers to finish
 	wg.Wait()
@@ -93,6 +91,7 @@ func processLink(link string, tasks chan<- string) {
 			return
 		}
 		for _, l := range links {
+			// we uss goroutine to avoid deadlock when the channel is full
 			go enqueueLink(l, tasks)
 		}
 	}
