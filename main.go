@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,17 +12,12 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 
 	"golang.org/x/net/html"
 )
 
 const (
-	baseURL     = "https://olamundo.pl"
-	outputDir   = "./output"
 	concurrency = 10
-	//sleepTime   = 2 * time.Second
-	sleepTime = time.Nanosecond
 )
 
 var (
@@ -29,13 +25,17 @@ var (
 		sync.Mutex
 		m map[string]bool
 	}{m: make(map[string]bool)}
-)
-var (
-	tasksWg sync.WaitGroup
-	re      = regexp.MustCompile(`url\(\s*['"]?\s*(https?://[^'")]+?)\s*['"]?\s*\)`)
+	re        = regexp.MustCompile(`url\(\s*['"]?\s*(https?://[^'")]+?)\s*['"]?\s*\)`)
+	tasksWg   sync.WaitGroup
+	baseURL   *string
+	outputDir *string
 )
 
 func main() {
+	baseURL = flag.String("url", "https://olamundo.pl", "Base URL to start crawling")
+	outputDir = flag.String("dir", "./output", "Output directory")
+	flag.Parse()
+
 	tasks := make(chan string, 10000)
 
 	// Goroutine that waits for tasksWg to reach 0 and then closes the channel
@@ -57,7 +57,7 @@ func main() {
 	}
 
 	// Add the first link (base page)
-	enqueueLink(baseURL, tasks)
+	enqueueLink(*baseURL, tasks)
 
 	// Wait for all workers to finish
 	wg.Wait()
@@ -87,7 +87,6 @@ func processLink(link string, tasks chan<- string) {
 			fmt.Printf("[ERROR] Failed to download asset: %s - %v\n", link, err)
 		}
 	} else {
-		time.Sleep(sleepTime)
 		links, err := processPage(link)
 		if err != nil {
 			fmt.Printf("[ERROR] Failed to process page %s: %v\n", link, err)
@@ -117,7 +116,7 @@ func processPage(pageURL string) ([]string, error) {
 		return nil, err
 	}
 
-	pageLinks := modifyLinks(doc, pageURL, baseURL)
+	pageLinks := modifyLinks(doc, pageURL, *baseURL)
 
 	outputFile := getOutputPath(pageURL)
 	err = saveHTML(outputFile, doc)
@@ -403,7 +402,7 @@ func downloadAsset(link string) error {
 func getOutputPath(link string) string {
 	u, err := url.Parse(link)
 	if err != nil {
-		return filepath.Join(outputDir, "index.html")
+		return filepath.Join(*outputDir, "index.html")
 	}
 
 	path := u.Path
@@ -430,7 +429,7 @@ func getOutputPath(link string) string {
 		path = u.Path
 	}
 
-	return filepath.Join(outputDir, path)
+	return filepath.Join(*outputDir, path)
 }
 
 func saveHTML(outputFile string, doc *html.Node) error {
