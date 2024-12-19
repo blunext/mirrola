@@ -32,15 +32,57 @@ var (
 )
 
 type unwantedTag struct {
-	Tag       string
-	AttrKey   string
-	AttrValue string
+	Tag   string
+	Attrs map[string]string
 }
 
 var unwantedTags = []unwantedTag{
-	{Tag: "link", AttrKey: "rel", AttrValue: "shortlink"}, // <link rel="shortlink" href="/?p=1019">
-	{Tag: "link", AttrKey: "rel", AttrValue: "pingback"},  // <link rel="pingback" href="/xmlrpc.php">
-	{Tag: "link", AttrKey: "rel", AttrValue: "EditURI"},   // <link rel="EditURI" type="application/rsd+xml" title="RSD" href="/xmlrpc.php?rsd">
+	{ // <link rel="shortlink" href="/?p=1019">
+		Tag: "link",
+		Attrs: map[string]string{
+			"rel": "shortlink",
+		},
+	},
+	{ // <link rel="pingback" href="/xmlrpc.php">
+		Tag: "link",
+		Attrs: map[string]string{
+			"rel": "pingback",
+		},
+	},
+	{ // <link rel="EditURI" type="application/rsd+xml" title="RSD" href="/xmlrpc.php?rsd">
+		Tag: "link",
+		Attrs: map[string]string{
+			"rel": "EditURI",
+		},
+	},
+	{ // <link rel="https://api.w.org/" href="/wp-json/">
+		Tag: "link",
+		Attrs: map[string]string{
+			"rel": "https://api.w.org/",
+		},
+	},
+	{ // <link rel="alternate" title="JSON" type="application/json" href="/wp-json/wp/v2/posts/1019">
+		Tag: "link",
+		Attrs: map[string]string{
+			"rel":   "alternate",
+			"title": "JSON",
+			"type":  "application/json",
+		},
+	},
+	{ // <link rel="alternate" title="oEmbed (JSON)" type="application/json+oembed" href="...">
+		Tag: "link",
+		Attrs: map[string]string{
+			"rel":  "alternate",
+			"type": "application/json+oembed",
+		},
+	},
+	{ // <link rel="alternate" title="oEmbed (XML)" type="text/xml+oembed" href="...">
+		Tag: "link",
+		Attrs: map[string]string{
+			"rel":  "alternate",
+			"type": "text/xml+oembed",
+		},
+	},
 }
 
 func main() {
@@ -148,14 +190,31 @@ func filterDocument(n *html.Node) {
 	f = func(node *html.Node) {
 		if node.Type == html.ElementNode {
 			for _, unwanted := range unwantedTags {
-				if node.Data == unwanted.Tag {
-					for _, attr := range node.Attr {
-						if strings.ToLower(attr.Key) == unwanted.AttrKey && strings.ToLower(attr.Val) == unwanted.AttrValue {
-							// Remove this node from its parent
-							if node.Parent != nil {
-								node.Parent.RemoveChild(node)
-								return // Node is removed; no need to check further
+				if strings.ToLower(node.Data) == unwanted.Tag {
+					match := true
+					for key, val := range unwanted.Attrs {
+						found := false
+						for _, attr := range node.Attr {
+							if strings.ToLower(attr.Key) == key && strings.ToLower(attr.Val) == strings.ToLower(val) {
+								found = true
+								break
 							}
+						}
+						if !found {
+							match = false
+							break
+						}
+					}
+					if match {
+						// Remove this node from its parent
+						if node.Parent != nil {
+							node.Parent.RemoveChild(node)
+							fmt.Printf("[INFO] Removed unwanted tag: <%s ", node.Data)
+							for _, attr := range node.Attr {
+								fmt.Printf(`%s="%s" `, attr.Key, attr.Val)
+							}
+							fmt.Println(">")
+							return // Node is removed; no need to check further
 						}
 					}
 				}
