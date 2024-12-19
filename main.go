@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -12,12 +13,14 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/net/html"
 )
 
 const (
 	concurrency = 10
+	queueSize   = 10000
 )
 
 var (
@@ -61,11 +64,12 @@ var unwantedTags = []unwantedTag{
 }
 
 func main() {
+	var processError atomic.Value
 	baseURL = flag.String("url", "https://olamundo.pl", "Base URL to start crawling")
 	outputDir = flag.String("dir", "./output", "Output directory")
 	flag.Parse()
 
-	tasks := make(chan string, 10000)
+	tasks := make(chan string, queueSize)
 
 	enqueueLink(*baseURL, tasks)
 
@@ -80,8 +84,16 @@ func main() {
 		go func() {
 			defer workersWg.Done()
 			for link := range tasks {
-				processLink(link, tasks)
-				tasksWg.Done() // Task completed
+				if err := processLink(link, tasks); err != nil {
+					fmt.Printf("[ERROR] Failed to process link: %s - %v\n", link, err)
+					if processError.Load() == nil {
+						processError.Store(err)
+					} else {
+						processError.Store(fmt.Errorf("%v; %v", processError.Load(), err))
+					}
+					return
+				}
+				tasksWg.Done()
 			}
 		}()
 	}
@@ -89,6 +101,10 @@ func main() {
 	// Wait for all workers to finish
 	workersWg.Wait()
 
+	if err := processError.Load(); err != nil {
+		fmt.Printf("[ERROR] Processing failed: %v\n", err)
+		return
+	}
 	fmt.Println("Downloading completed.")
 }
 
@@ -101,29 +117,36 @@ func enqueueLink(link string, tasks chan<- string) {
 	}
 	visited.m[link] = true
 	tasksWg.Add(1)
-	fmt.Printf("[INFO] Enqueued link: %s\n", link)
 	tasks <- link
+	//fmt.Printf("[INFO] Enqueued link: %s\n", link)
 }
 
 // processLink checks if the link is an asset or a page and processes it accordingly
-func processLink(link string, tasks chan<- string) {
-	fmt.Printf("[INFO] Processing link: %s\n", link)
+func processLink(link string, tasks chan<- string) error {
+	//fmt.Printf("[INFO] Processing link: %s, queue size: %d\n", link, len(tasks))
 	if isStaticAsset(link) {
 		err := downloadAsset(link)
 		if err != nil {
 			fmt.Printf("[ERROR] Failed to download asset: %s - %v\n", link, err)
+			return err
 		}
-	} else {
-		links, err := processPage(link)
-		if err != nil {
-			fmt.Printf("[ERROR] Failed to process page %s: %v\n", link, err)
-			return
-		}
-		for _, l := range links {
-			// we use goroutine to avoid deadlock when the channel is full
-			go enqueueLink(l, tasks)
-		}
+		return nil
 	}
+	links, err := processPage(link)
+	if err != nil {
+		fmt.Printf("[ERROR] Failed to process page %s: %v\n", link, err)
+		return err
+	}
+	if len(tasks)+len(links) > queueSize {
+		fmt.Printf("[WARN] Queue is full, no of links: %d\n", len(tasks)+len(links))
+		return errors.New("[ERROR] queue is full")
+	}
+	fmt.Printf("[INFO] Processed page: %s, found %d new links, queue size: %d\n", link, len(links), len(tasks))
+	for _, l := range links {
+		// we use goroutine to avoid deadlock when the channel is full
+		enqueueLink(l, tasks)
+	}
+	return nil
 }
 
 // processPage downloads the HTML page, filters unwanted tags, modifies links, saves it, and returns newly found links
@@ -153,9 +176,7 @@ func processPage(pageURL string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	fmt.Printf("[INFO] Processed page: %s, found %d new link(s)\n", pageURL, len(pageLinks))
-
+	fmt.Printf("[INFO] Saved page: %s -> %s\n", pageURL, outputFile)
 	return pageLinks, nil
 }
 
@@ -189,7 +210,7 @@ func filterDocument(n *html.Node) {
 							//	fmt.Printf(`%s="%s" `, attr.Key, attr.Val)
 							//}
 							//fmt.Println(">")
-							return // Node is removed; no need to check further
+							return
 						}
 					}
 				}
@@ -447,11 +468,11 @@ func downloadAsset(link string) error {
 
 	// Check if the file already exists
 	if _, err := os.Stat(outputFile); err == nil {
-		fmt.Printf("[INFO] Asset already exists, skipping download: %s\n", outputFile)
+		//fmt.Printf("[INFO] Asset already exists: %s\n", outputFile)
 		return nil
 	}
 
-	fmt.Printf("[INFO] Downloading asset: %s\n", link)
+	//fmt.Printf("[INFO] Downloading asset: %s\n", link)
 	resp, err := http.Get(link)
 	if err != nil {
 		return err
