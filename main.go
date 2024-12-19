@@ -31,6 +31,18 @@ var (
 	outputDir *string
 )
 
+type unwantedTag struct {
+	Tag       string
+	AttrKey   string
+	AttrValue string
+}
+
+var unwantedTags = []unwantedTag{
+	{Tag: "link", AttrKey: "rel", AttrValue: "shortlink"}, // <link rel="shortlink" href="/?p=1019">
+	{Tag: "link", AttrKey: "rel", AttrValue: "pingback"},  // <link rel="pingback" href="/xmlrpc.php">
+	{Tag: "link", AttrKey: "rel", AttrValue: "EditURI"},   // <link rel="EditURI" type="application/rsd+xml" title="RSD" href="/xmlrpc.php?rsd">
+}
+
 func main() {
 	baseURL = flag.String("url", "https://olamundo.pl", "Base URL to start crawling")
 	outputDir = flag.String("dir", "./output", "Output directory")
@@ -91,13 +103,13 @@ func processLink(link string, tasks chan<- string) {
 			return
 		}
 		for _, l := range links {
-			// we uss goroutine to avoid deadlock when the channel is full
+			// we use goroutine to avoid deadlock when the channel is full
 			go enqueueLink(l, tasks)
 		}
 	}
 }
 
-// processPage downloads the HTML page, modifies links, saves it, and returns newly found links
+// processPage downloads the HTML page, filters unwanted tags, modifies links, saves it, and returns newly found links
 func processPage(pageURL string) ([]string, error) {
 	resp, err := http.Get(pageURL)
 	if err != nil {
@@ -115,6 +127,8 @@ func processPage(pageURL string) ([]string, error) {
 		return nil, err
 	}
 
+	filterDocument(doc)
+
 	pageLinks := modifyLinks(doc, pageURL, *baseURL)
 
 	outputFile := getOutputPath(pageURL)
@@ -128,6 +142,36 @@ func processPage(pageURL string) ([]string, error) {
 	return pageLinks, nil
 }
 
+// filterDocument removes unwanted HTML tags based on the predefined list.
+func filterDocument(n *html.Node) {
+	var f func(*html.Node)
+	f = func(node *html.Node) {
+		if node.Type == html.ElementNode {
+			for _, unwanted := range unwantedTags {
+				if node.Data == unwanted.Tag {
+					for _, attr := range node.Attr {
+						if strings.ToLower(attr.Key) == unwanted.AttrKey && strings.ToLower(attr.Val) == unwanted.AttrValue {
+							// Remove this node from its parent
+							if node.Parent != nil {
+								node.Parent.RemoveChild(node)
+								return // Node is removed; no need to check further
+							}
+						}
+					}
+				}
+			}
+		}
+		// Continue traversing the node tree
+		for c := node.FirstChild; c != nil; {
+			next := c.NextSibling
+			f(c)
+			c = next
+		}
+	}
+	f(n)
+}
+
+// modifyLinks checks all relevant attributes and modifies links accordingly
 func modifyLinks(n *html.Node, currentURL, baseURL string) []string {
 	var foundLinks []string
 
