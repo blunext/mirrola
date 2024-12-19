@@ -38,50 +38,25 @@ type unwantedTag struct {
 
 var unwantedTags = []unwantedTag{
 	{ // <link rel="shortlink" href="/?p=1019">
-		Tag: "link",
-		Attrs: map[string]string{
-			"rel": "shortlink",
-		},
+		Tag: "link", Attrs: map[string]string{"rel": "shortlink"},
 	},
 	{ // <link rel="pingback" href="/xmlrpc.php">
-		Tag: "link",
-		Attrs: map[string]string{
-			"rel": "pingback",
-		},
+		Tag: "link", Attrs: map[string]string{"rel": "pingback"},
 	},
 	{ // <link rel="EditURI" type="application/rsd+xml" title="RSD" href="/xmlrpc.php?rsd">
-		Tag: "link",
-		Attrs: map[string]string{
-			"rel": "EditURI",
-		},
+		Tag: "link", Attrs: map[string]string{"rel": "EditURI"},
 	},
 	{ // <link rel="https://api.w.org/" href="/wp-json/">
-		Tag: "link",
-		Attrs: map[string]string{
-			"rel": "https://api.w.org/",
-		},
+		Tag: "link", Attrs: map[string]string{"rel": "https://api.w.org/"},
 	},
 	{ // <link rel="alternate" title="JSON" type="application/json" href="/wp-json/wp/v2/posts/1019">
-		Tag: "link",
-		Attrs: map[string]string{
-			"rel":   "alternate",
-			"title": "JSON",
-			"type":  "application/json",
-		},
+		Tag: "link", Attrs: map[string]string{"rel": "alternate", "title": "JSON", "type": "application/json"},
 	},
 	{ // <link rel="alternate" title="oEmbed (JSON)" type="application/json+oembed" href="...">
-		Tag: "link",
-		Attrs: map[string]string{
-			"rel":  "alternate",
-			"type": "application/json+oembed",
-		},
+		Tag: "link", Attrs: map[string]string{"rel": "alternate", "type": "application/json+oembed"},
 	},
 	{ // <link rel="alternate" title="oEmbed (XML)" type="text/xml+oembed" href="...">
-		Tag: "link",
-		Attrs: map[string]string{
-			"rel":  "alternate",
-			"type": "text/xml+oembed",
-		},
+		Tag: "link", Attrs: map[string]string{"rel": "alternate", "type": "text/xml+oembed"},
 	},
 }
 
@@ -99,11 +74,11 @@ func main() {
 		close(tasks)
 	}()
 
-	var wg sync.WaitGroup
+	var workersWg sync.WaitGroup
 	for i := 0; i < concurrency; i++ {
-		wg.Add(1)
+		workersWg.Add(1)
 		go func() {
-			defer wg.Done()
+			defer workersWg.Done()
 			for link := range tasks {
 				processLink(link, tasks)
 				tasksWg.Done() // Task completed
@@ -112,7 +87,7 @@ func main() {
 	}
 
 	// Wait for all workers to finish
-	wg.Wait()
+	workersWg.Wait()
 
 	fmt.Println("Downloading completed.")
 }
@@ -209,11 +184,11 @@ func filterDocument(n *html.Node) {
 						// Remove this node from its parent
 						if node.Parent != nil {
 							node.Parent.RemoveChild(node)
-							fmt.Printf("[INFO] Removed unwanted tag: <%s ", node.Data)
-							for _, attr := range node.Attr {
-								fmt.Printf(`%s="%s" `, attr.Key, attr.Val)
-							}
-							fmt.Println(">")
+							//fmt.Printf("[INFO] Removed unwanted tag: <%s ", node.Data)
+							//for _, attr := range node.Attr {
+							//	fmt.Printf(`%s="%s" `, attr.Key, attr.Val)
+							//}
+							//fmt.Println(">")
 							return // Node is removed; no need to check further
 						}
 					}
