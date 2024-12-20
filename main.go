@@ -28,10 +28,11 @@ var (
 		sync.Mutex
 		m map[string]bool
 	}{m: make(map[string]bool)}
-	re        = regexp.MustCompile(`url\(\s*['"]?\s*(https?://[^'")]+?)\s*['"]?\s*\)`)
-	tasksWg   sync.WaitGroup
-	baseURL   *string
-	outputDir *string
+	re         = regexp.MustCompile(`url\(\s*['"]?\s*(https?://[^'")]+?)\s*['"]?\s*\)`)
+	tasksWg    sync.WaitGroup
+	baseURL    *string
+	outputDir  *string
+	rewriteUrl *bool
 )
 
 type unwantedTag struct {
@@ -67,6 +68,7 @@ func main() {
 	var processError atomic.Value
 	baseURL = flag.String("url", "https://olamundo.pl", "Base URL to start crawling")
 	outputDir = flag.String("dir", "./output", "Output directory")
+	rewriteUrl = flag.Bool("rewrite", false, "Rewrite URLs based on query parameters")
 	flag.Parse()
 
 	tasks := make(chan string, queueSize)
@@ -242,7 +244,7 @@ func modifyLinks(n *html.Node, currentURL, baseURL string) []string {
 					if err == nil && isSameDomain(absLink.String(), baseURL) {
 						foundLinks = append(foundLinks, absLink.String())
 						// If URL has query parameters, rewrite based on whether it's an asset or page
-						if absLink.RawQuery != "" {
+						if *rewriteUrl && absLink.RawQuery != "" {
 							if isStaticAsset(absLink.String()) {
 								absLink = rewriteAssetURL(absLink)
 							} else {
@@ -385,10 +387,12 @@ func processInlineStyle(style, currentURL, baseURL string) (string, []string) {
 		}
 		if isSameDomain(absLink.String(), baseURL) {
 			foundLinks = append(foundLinks, absLink.String())
-			if absLink.RawQuery != "" && isStaticAsset(absLink.String()) {
-				absLink = rewriteAssetURL(absLink)
-			} else if absLink.RawQuery != "" {
-				absLink = rewritePageURL(absLink)
+			if *rewriteUrl && absLink.RawQuery != "" {
+				if isStaticAsset(absLink.String()) {
+					absLink = rewriteAssetURL(absLink)
+				} else {
+					absLink = rewritePageURL(absLink)
+				}
 			}
 			relativeURL := convertToRelative(absLink.String(), baseURL)
 			return fmt.Sprintf("url('%s')", relativeURL)
@@ -412,10 +416,12 @@ func processInlineCSS(css, currentURL, baseURL string) (string, []string) {
 		}
 		if isSameDomain(absLink.String(), baseURL) {
 			foundLinks = append(foundLinks, absLink.String())
-			if absLink.RawQuery != "" && isStaticAsset(absLink.String()) {
-				absLink = rewriteAssetURL(absLink)
-			} else if absLink.RawQuery != "" {
-				absLink = rewritePageURL(absLink)
+			if *rewriteUrl && absLink.RawQuery != "" {
+				if isStaticAsset(absLink.String()) {
+					absLink = rewriteAssetURL(absLink)
+				} else {
+					absLink = rewritePageURL(absLink)
+				}
 			}
 			relativeURL := convertToRelative(absLink.String(), baseURL)
 			return fmt.Sprintf("url('%s')", relativeURL)
@@ -518,7 +524,7 @@ func getOutputPath(link string) string {
 	}
 
 	// If there are query parameters, rewrite the URL accordingly
-	if u.RawQuery != "" {
+	if *rewriteUrl && u.RawQuery != "" {
 		if isStaticAsset(u.String()) {
 			u = rewriteAssetURL(u)
 		} else {
