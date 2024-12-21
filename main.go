@@ -235,9 +235,10 @@ func modifyLinks(n *html.Node, currentURL, baseURL string) []string {
 	var f func(*html.Node)
 	f = func(node *html.Node) {
 		if node.Type == html.ElementNode {
-			// Handle href, src, style attributes
+			// Handle href, src, style and srcset attributes
 			for i, attr := range node.Attr {
-				if attr.Key == "href" || attr.Key == "src" {
+				switch attr.Key {
+				case "href", "src":
 					original := attr.Val
 					// Convert link to absolute
 					absLink, err := resolveURL(currentURL, original)
@@ -255,11 +256,14 @@ func modifyLinks(n *html.Node, currentURL, baseURL string) []string {
 						rel := convertToRelative(absLink.String(), baseURL)
 						node.Attr[i].Val = rel
 					}
-				}
-				if attr.Key == "style" {
+				case "style":
 					newStyle, styleLinks := processInlineStyle(attr.Val, currentURL, baseURL)
 					node.Attr[i].Val = newStyle
 					foundLinks = append(foundLinks, styleLinks...)
+				case "srcset":
+					newSrcSet, srcSetLinks := processSrcSet(attr.Val, currentURL, baseURL)
+					node.Attr[i].Val = newSrcSet
+					foundLinks = append(foundLinks, srcSetLinks...)
 				}
 			}
 
@@ -278,6 +282,66 @@ func modifyLinks(n *html.Node, currentURL, baseURL string) []string {
 	f(n)
 
 	return foundLinks
+}
+
+// processSrcSet analyzes and processes the srcset attribute
+// srcset = "https://domain.com/img/image-300w.jpg 300w, https://domain.com/img/image-600w.jpg 600w, https://domain.com/img/image-2x.jpg 2x"
+// Processed srcset = "/img/image-300w.jpg 300w, /img/image-600w.jpg 600w, /img/image-2x.jpg 2x"
+func processSrcSet(srcset string, currentURL, baseURL string) (string, []string) {
+	var foundLinks []string
+	var newSrcSetParts []string
+
+	// Split srcset into individual sources
+	parts := strings.Split(srcset, ",")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		// Separate URL and descriptor (e.g., "2x", "300w")
+		fields := strings.Fields(part)
+		if len(fields) == 0 {
+			continue
+		}
+		imageURL := fields[0]
+		descriptor := ""
+		if len(fields) > 1 {
+			descriptor = fields[1]
+		}
+
+		// Process the URL
+		absLink, err := resolveURL(currentURL, imageURL)
+		if err != nil {
+			// If the URL cannot be processed, keep the original
+			newSrcSetParts = append(newSrcSetParts, part)
+			continue
+		}
+
+		if isSameDomain(absLink.String(), baseURL) {
+			foundLinks = append(foundLinks, absLink.String())
+			// Rewrite the URL if required
+			if *rewriteUrl && absLink.RawQuery != "" {
+				if isStaticAsset(absLink.String()) {
+					absLink = rewriteAssetURL(absLink)
+				} else {
+					absLink = rewritePageURL(absLink)
+				}
+			}
+			relativeURL := convertToRelative(absLink.String(), baseURL)
+			if descriptor != "" {
+				newSrcSetParts = append(newSrcSetParts, fmt.Sprintf("%s %s", relativeURL, descriptor))
+			} else {
+				newSrcSetParts = append(newSrcSetParts, relativeURL)
+			}
+		} else {
+			// If the domain is different, keep the original
+			newSrcSetParts = append(newSrcSetParts, part)
+		}
+	}
+
+	newSrcSet := strings.Join(newSrcSetParts, ", ")
+	return newSrcSet, foundLinks
 }
 
 // rewriteAssetURL transforms an asset URL by incorporating query parameters into the filename.
