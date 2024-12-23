@@ -66,10 +66,16 @@ var unwantedTags = []unwantedTag{
 
 func main() {
 	var processError atomic.Value
-	baseURL = flag.String("url", "https://olamundo.pl", "Base URL to start crawling")
+	baseURL = flag.String("url", "", "Base URL to start crawling")
 	outputDir = flag.String("dir", "./output", "Output directory")
 	rewriteUrl = flag.Bool("rewrite", false, "Rewrite URLs based on query parameters")
 	flag.Parse()
+
+	if *baseURL == "" {
+		fmt.Println("Error: The -url parameter is required.")
+		flag.Usage()
+		return
+	}
 
 	tasks := make(chan string, queueSize)
 
