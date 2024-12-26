@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,12 +20,12 @@ import (
 )
 
 const (
-	concurrency = 10
-	queueSize   = 10000
+	queueSize = 10000
 )
 
 var (
-	visited = struct {
+	concurrency = runtime.NumCPU()
+	visited     = struct {
 		sync.Mutex
 		m map[string]bool
 	}{m: make(map[string]bool)}
@@ -76,7 +77,7 @@ func main() {
 		flag.Usage()
 		return
 	}
-
+	fmt.Printf("Starting download for %s, number of workers: %d\n", *baseURL, concurrency)
 	tasks := make(chan string, queueSize)
 
 	enqueueLink(*baseURL, tasks)
