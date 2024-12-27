@@ -450,6 +450,12 @@ func sanitizeQueryPart(s string) string {
 	return s
 }
 
+func unifyScheme(u, base *url.URL) {
+	if u.Host == base.Host {
+		u.Scheme = base.Scheme
+	}
+}
+
 func resolveURL(currentURL, link string) (*url.URL, error) {
 	base, err := url.Parse(currentURL)
 	if err != nil {
@@ -459,7 +465,10 @@ func resolveURL(currentURL, link string) (*url.URL, error) {
 	if err != nil {
 		return nil, err
 	}
-	return base.ResolveReference(u), nil
+
+	abs := base.ResolveReference(u)
+	unifyScheme(abs, base) // unify the scheme (http -> https) if the host is the same
+	return abs, nil
 }
 
 func processInlineStyle(style, currentURL, baseURL string) (string, []string) {
