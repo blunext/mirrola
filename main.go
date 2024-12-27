@@ -29,7 +29,8 @@ var (
 		sync.Mutex
 		m map[string]bool
 	}{m: make(map[string]bool)}
-	re         = regexp.MustCompile(`url\(\s*['"]?\s*(https?://[^'")]+?)\s*['"]?\s*\)`)
+	re         = regexp.MustCompile(`url\(\s*['"]?\s*(https?://[^'")]+?)\s*['"]?\s*\)`) // Example regex that captures url('...') or url("...") or url(...).
+	reJS       = regexp.MustCompile(`(https?://[^\s"']+)`)                              // Example regex that captures http:// or https:// up to the first whitespace or quote.
 	tasksWg    sync.WaitGroup
 	baseURL    *string
 	outputDir  *string
@@ -281,6 +282,23 @@ func modifyLinks(n *html.Node, currentURL, baseURL string) []string {
 				replaceTextContent(node, newCSS)
 				foundLinks = append(foundLinks, cssLinks...)
 			}
+			// Additional handling for <script>...</script>
+			if node.Data == "script" {
+				var scriptID string
+				for _, a := range node.Attr {
+					if a.Key == "id" {
+						scriptID = a.Val
+						break
+					}
+				}
+				// only process specific scripts, here we process Simple Lightbox scripts
+				if scriptID == "slb_footer" || scriptID == "slb_context" {
+					jsContent := getTextContent(node)
+					newJS, jsLinks := processInlineJS(jsContent, currentURL, baseURL)
+					replaceTextContent(node, newJS)
+					foundLinks = append(foundLinks, jsLinks...)
+				}
+			}
 		}
 		for c := node.FirstChild; c != nil; c = c.NextSibling {
 			f(c)
@@ -500,6 +518,54 @@ func processInlineCSS(css, currentURL, baseURL string) (string, []string) {
 		return match
 	})
 	return newCSS, foundLinks
+}
+
+// processInlineJS searches within the JS content (e.g., in the Simple Lightbox code)
+// for links of type http:// ... or https:// ... (often escaped as http:\/\/...),
+// rewrites them, and returns a list of newly found links so they can be downloaded.
+func processInlineJS(jsContent, currentURL, baseURL string) (string, []string) {
+	var foundLinks []string
+
+	// First, "un-escape" the sequence "\/" to "/",
+	// so that a regular expression or link parser can correctly recognize them.
+	unescaped := strings.ReplaceAll(jsContent, `\/`, `/`)
+
+	newJS := reJS.ReplaceAllStringFunc(unescaped, func(match string) string {
+		// match = e.g., "http://olamundo.pl/wp-content/uploads/2014/11/dante-gabriel-rossetti.jpg"
+		absLink, err := resolveURL(currentURL, match)
+		if err != nil {
+			return match // Do not change if it cannot be parsed
+		}
+
+		// Check if it is from the same domain
+		if isSameDomain(absLink.String(), baseURL) {
+			foundLinks = append(foundLinks, absLink.String())
+
+			// Rewrite if -rewriteUrl is enabled
+			if *rewriteUrl && absLink.RawQuery != "" {
+				if isStaticAsset(absLink.String()) {
+					absLink = rewriteAssetURL(absLink)
+				} else {
+					absLink = rewritePageURL(absLink)
+				}
+			}
+
+			// Replace the absolute link with a relative one (like in CSS)
+			relative := convertToRelative(absLink.String(), baseURL)
+
+			// Restore escape sequences like "\/" instead of "/"
+			// NOTE: we must replace *only* "/" with "\/" to keep the script correct
+			escaped := strings.ReplaceAll(relative, "/", `\/`)
+
+			// Return the escaped, replaced version
+			return escaped
+		}
+
+		// If different domain, leave the original
+		return match
+	})
+
+	return newJS, foundLinks
 }
 
 func convertToRelative(link, base string) string {
