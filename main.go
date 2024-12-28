@@ -168,6 +168,9 @@ func processPage(pageURL string) ([]string, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("download page failed, HTTP status: %d", resp.StatusCode)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -635,6 +638,9 @@ func downloadAsset(link string) error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download asset failed, HTTP status: %d", resp.StatusCode)
+	}
 
 	err = os.MkdirAll(filepath.Dir(outputFile), 0755)
 	if err != nil {
