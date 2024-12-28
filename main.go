@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -31,6 +32,7 @@ var (
 	}{m: make(map[string]bool)}
 	re         = regexp.MustCompile(`url\(\s*['"]?\s*(https?://[^'")]+?)\s*['"]?\s*\)`) // Example regex that captures url('...') or url("...") or url(...).
 	reJS       = regexp.MustCompile(`(https?://[^\s"']+)`)                              // Example regex that captures http:// or https:// up to the first whitespace or quote.
+	unicodeEsc = regexp.MustCompile(`\\u[0-9A-Fa-f]{4}`)                                // Example regex that captures \uXXXX unicode escapes.
 	tasksWg    sync.WaitGroup
 	baseURL    *string
 	outputDir  *string
@@ -539,6 +541,9 @@ func processInlineJS(jsContent, currentURL, baseURL string) (string, []string) {
 	// so that a regular expression or link parser can correctly recognize them.
 	unescaped := strings.ReplaceAll(jsContent, `\/`, `/`)
 
+	// decode unicode escapes \uXXXX np. \u2013 -> – (en dash)
+	unescaped = decodeUnicodeEscapes(unescaped)
+
 	newJS := reJS.ReplaceAllStringFunc(unescaped, func(match string) string {
 		// match = e.g., "http://olamundo.pl/wp-content/uploads/2014/11/dante-gabriel-rossetti.jpg"
 		absLink, err := resolveURL(currentURL, match)
@@ -727,5 +732,17 @@ func replaceTextContent(n *html.Node, newText string) {
 	n.AppendChild(&html.Node{
 		Type: html.TextNode,
 		Data: newText,
+	})
+}
+
+func decodeUnicodeEscapes(s string) string {
+	return unicodeEsc.ReplaceAllStringFunc(s, func(m string) string {
+		// m has the form e.g. "\u2013"
+		hexVal := m[2:] // cat "/u" prefix
+		r, err := strconv.ParseInt(hexVal, 16, 32)
+		if err != nil {
+			return m
+		}
+		return string(rune(r))
 	})
 }
