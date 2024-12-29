@@ -16,8 +16,11 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"unicode"
 
 	"golang.org/x/net/html"
+	"golang.org/x/text/transform"
+	"golang.org/x/text/unicode/norm"
 )
 
 const (
@@ -666,7 +669,16 @@ func getOutputPath(link string) string {
 		return filepath.Join(*outputDir, "index.html")
 	}
 
-	path := u.Path
+	// Normalizuj ścieżkę do NFC
+	path := norm.NFC.String(u.Path)
+
+	// Usuń diakrytyki
+	path, err = removeDiacritics(path)
+	if err != nil {
+		// Obsłuż błąd, na przykład poprzez użycie oryginalnej ścieżki
+		path = norm.NFC.String(u.Path) // Fallback
+	}
+
 	if path == "" || path == "/" {
 		path = "/index.html"
 	} else {
@@ -690,7 +702,18 @@ func getOutputPath(link string) string {
 		path = u.Path
 	}
 
-	return filepath.Join(*outputDir, path)
+	finalPath := filepath.Join(*outputDir, path)
+	// Normalizuj ponownie do NFC, ponieważ przepisany path może zawierać znaki nie-NFC
+	finalPath = norm.NFC.String(finalPath)
+
+	// Usuń diakrytyki
+	finalPath, err = removeDiacritics(finalPath)
+	if err != nil {
+		// Obsłuż błąd, na przykład poprzez użycie oryginalnej ścieżki
+		finalPath = norm.NFC.String(finalPath) // Fallback
+	}
+
+	return finalPath
 }
 
 func saveHTML(outputFile string, doc *html.Node) error {
@@ -751,4 +774,17 @@ func decodeUnicodeEscapes(s string) string {
 		}
 		return string(rune(r))
 	})
+}
+
+// removeDiacritics usuwa znaki diakrytyczne z ciągu znaków
+func removeDiacritics(s string) (string, error) {
+	t := transform.Chain(
+		norm.NFD, // Dekompresja do formy NFD
+		transform.RemoveFunc(func(r rune) bool {
+			return unicode.Is(unicode.Mn, r) // Usuwa znaki nie-rozdzielające (diakrytyki)
+		}),
+		norm.NFC, // Rekompresja do formy NFC
+	)
+	result, _, err := transform.String(t, s)
+	return result, err
 }
