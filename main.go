@@ -42,6 +42,7 @@ var (
 	rewriteUrl *bool
 )
 
+// Unwanted tags that we'll remove (e.g. <link rel="shortlink" ...>)
 type unwantedTag struct {
 	Tag   string
 	Attrs map[string]string
@@ -73,6 +74,7 @@ var unwantedTags = []unwantedTag{
 
 func main() {
 	var processError atomic.Value
+
 	baseURL = flag.String("url", "", "Base URL to start crawling")
 	outputDir = flag.String("dir", "./output", "Output directory")
 	rewriteUrl = flag.Bool("rewrite", false, "Rewrite URLs based on query parameters")
@@ -83,6 +85,7 @@ func main() {
 		flag.Usage()
 		return
 	}
+
 	fmt.Printf("Starting download for %s, number of workers: %d\n", *baseURL, concurrency)
 	tasks := make(chan string, queueSize)
 
@@ -127,6 +130,7 @@ func main() {
 func enqueueLink(link string, tasks chan<- string) {
 	visited.Lock()
 	defer visited.Unlock()
+
 	if visited.m[link] {
 		return
 	}
@@ -158,7 +162,6 @@ func processLink(link string, tasks chan<- string) error {
 	}
 	fmt.Printf("[INFO] Processed page: %s, found %d new links, queue size: %d\n", link, len(links), len(tasks))
 	for _, l := range links {
-		// we use goroutine to avoid deadlock when the channel is full
 		enqueueLink(l, tasks)
 	}
 	return nil
@@ -171,6 +174,7 @@ func processPage(pageURL string) ([]string, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("download page failed, HTTP status: %d", resp.StatusCode)
 	}
@@ -198,7 +202,7 @@ func processPage(pageURL string) ([]string, error) {
 	return pageLinks, nil
 }
 
-// filterDocument removes unwanted HTML tags based on the predefined list.
+// filterDocument removes unwanted HTML tags based on predefined rules
 func filterDocument(n *html.Node) {
 	var f func(*html.Node)
 	f = func(node *html.Node) {
@@ -244,7 +248,7 @@ func filterDocument(n *html.Node) {
 	f(n)
 }
 
-// modifyLinks checks all relevant attributes and modifies links accordingly
+// modifyLinks processes href/src in HTML, calls fixPath to decode/remove diacritics, then sets relative URLs
 func modifyLinks(n *html.Node, currentURL, baseURL string) []string {
 	var foundLinks []string
 
@@ -268,6 +272,9 @@ func modifyLinks(n *html.Node, currentURL, baseURL string) []string {
 								absLink = rewritePageURL(absLink)
 							}
 						}
+						// decode percent-encoded path, remove diacritics, etc.
+						fixPath(absLink)
+
 						// Replace link with relative
 						rel := convertToRelative(absLink.String(), baseURL)
 						node.Attr[i].Val = rel
@@ -361,6 +368,9 @@ func processSrcSet(srcset string, currentURL, baseURL string) (string, []string)
 					absLink = rewritePageURL(absLink)
 				}
 			}
+			// decode path and remove diacritics
+			fixPath(absLink)
+
 			relativeURL := convertToRelative(absLink.String(), baseURL)
 			if descriptor != "" {
 				newSrcSetParts = append(newSrcSetParts, fmt.Sprintf("%s %s", relativeURL, descriptor))
@@ -451,6 +461,7 @@ func rewritePageURL(u *url.URL) *url.URL {
 	return u
 }
 
+// sanitizeQueryPart replaces special characters in query
 func sanitizeQueryPart(s string) string {
 	s = strings.ReplaceAll(s, "=", "_")
 	s = strings.ReplaceAll(s, "?", "_")
@@ -458,12 +469,14 @@ func sanitizeQueryPart(s string) string {
 	return s
 }
 
+// unifyScheme ensures the scheme matches if host is the same
 func unifyScheme(u, base *url.URL) {
 	if u.Host == base.Host {
 		u.Scheme = base.Scheme
 	}
 }
 
+// resolveURL returns absolute URL from currentURL + link
 func resolveURL(currentURL, link string) (*url.URL, error) {
 	base, err := url.Parse(currentURL)
 	if err != nil {
@@ -479,6 +492,7 @@ func resolveURL(currentURL, link string) (*url.URL, error) {
 	return abs, nil
 }
 
+// processInlineStyle handles style="... url(...) ..."
 func processInlineStyle(style, currentURL, baseURL string) (string, []string) {
 	foundLinks := []string{}
 	newStyle := re.ReplaceAllStringFunc(style, func(match string) string {
@@ -500,6 +514,8 @@ func processInlineStyle(style, currentURL, baseURL string) (string, []string) {
 					absLink = rewritePageURL(absLink)
 				}
 			}
+			fixPath(absLink)
+
 			relativeURL := convertToRelative(absLink.String(), baseURL)
 			return fmt.Sprintf("url('%s')", relativeURL)
 		}
@@ -508,6 +524,7 @@ func processInlineStyle(style, currentURL, baseURL string) (string, []string) {
 	return newStyle, foundLinks
 }
 
+// processInlineCSS handles <style>...</style> content with url(...)
 func processInlineCSS(css, currentURL, baseURL string) (string, []string) {
 	foundLinks := []string{}
 	newCSS := re.ReplaceAllStringFunc(css, func(match string) string {
@@ -529,6 +546,8 @@ func processInlineCSS(css, currentURL, baseURL string) (string, []string) {
 					absLink = rewritePageURL(absLink)
 				}
 			}
+			fixPath(absLink)
+
 			relativeURL := convertToRelative(absLink.String(), baseURL)
 			return fmt.Sprintf("url('%s')", relativeURL)
 		}
@@ -569,6 +588,7 @@ func processInlineJS(jsContent, currentURL, baseURL string) (string, []string) {
 					absLink = rewritePageURL(absLink)
 				}
 			}
+			fixPath(absLink)
 
 			// Replace the absolute link with a relative one (like in CSS)
 			relative := convertToRelative(absLink.String(), baseURL)
@@ -588,6 +608,7 @@ func processInlineJS(jsContent, currentURL, baseURL string) (string, []string) {
 	return newJS, foundLinks
 }
 
+// convertToRelative removes the base from the link if it starts with it
 func convertToRelative(link, base string) string {
 	if strings.HasPrefix(link, base) {
 		return strings.TrimPrefix(link, base)
@@ -595,6 +616,7 @@ func convertToRelative(link, base string) string {
 	return link
 }
 
+// isSameDomain checks if link and base share the same host
 func isSameDomain(link, base string) bool {
 	u, err := url.Parse(link)
 	if err != nil {
@@ -626,6 +648,7 @@ func isStaticAsset(link string) bool {
 	return false
 }
 
+// downloadAsset fetches the file and saves it locally
 func downloadAsset(link string) error {
 	outputFile := getOutputPath(link)
 
@@ -641,6 +664,7 @@ func downloadAsset(link string) error {
 		return err
 	}
 	defer resp.Body.Close()
+
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("download asset failed, HTTP status: %d", resp.StatusCode)
 	}
@@ -663,20 +687,17 @@ func downloadAsset(link string) error {
 	return err
 }
 
+// getOutputPath determines how the file is saved locally
 func getOutputPath(link string) string {
 	u, err := url.Parse(link)
 	if err != nil {
 		return filepath.Join(*outputDir, "index.html")
 	}
 
-	// Normalizuj ścieżkę do NFC
 	path := norm.NFC.String(u.Path)
-
-	// Usuń diakrytyki
 	path, err = removeDiacritics(path)
 	if err != nil {
-		// Obsłuż błąd, na przykład poprzez użycie oryginalnej ścieżki
-		path = norm.NFC.String(u.Path) // Fallback
+		path = norm.NFC.String(u.Path)
 	}
 
 	if path == "" || path == "/" {
@@ -703,19 +724,15 @@ func getOutputPath(link string) string {
 	}
 
 	finalPath := filepath.Join(*outputDir, path)
-	// Normalizuj ponownie do NFC, ponieważ przepisany path może zawierać znaki nie-NFC
 	finalPath = norm.NFC.String(finalPath)
-
-	// Usuń diakrytyki
 	finalPath, err = removeDiacritics(finalPath)
 	if err != nil {
-		// Obsłuż błąd, na przykład poprzez użycie oryginalnej ścieżki
 		finalPath = norm.NFC.String(finalPath) // Fallback
 	}
-
 	return finalPath
 }
 
+// saveHTML writes the HTML document to a file
 func saveHTML(outputFile string, doc *html.Node) error {
 	err := os.MkdirAll(filepath.Dir(outputFile), 0755)
 	if err != nil {
@@ -764,6 +781,7 @@ func replaceTextContent(n *html.Node, newText string) {
 	})
 }
 
+// decodeUnicodeEscapes turns \uXXXX sequences into real Unicode runes
 func decodeUnicodeEscapes(s string) string {
 	return unicodeEsc.ReplaceAllStringFunc(s, func(m string) string {
 		// m has the form e.g. "\u2013"
@@ -776,15 +794,27 @@ func decodeUnicodeEscapes(s string) string {
 	})
 }
 
-// removeDiacritics usuwa znaki diakrytyczne z ciągu znaków
+// removeDiacritics removes combining marks from a string and normalizes to NFC
 func removeDiacritics(s string) (string, error) {
 	t := transform.Chain(
-		norm.NFD, // Dekompresja do formy NFD
+		norm.NFD,
 		transform.RemoveFunc(func(r rune) bool {
-			return unicode.Is(unicode.Mn, r) // Usuwa znaki nie-rozdzielające (diakrytyki)
+			return unicode.Is(unicode.Mn, r)
 		}),
-		norm.NFC, // Rekompresja do formy NFC
+		norm.NFC,
 	)
 	result, _, err := transform.String(t, s)
 	return result, err
+}
+
+// fixPath unescapes the path, removes diacritics, re-normalizes to NFC, then updates the URL
+func fixPath(u *url.URL) {
+	unescaped, err := url.PathUnescape(u.EscapedPath())
+	if err == nil {
+		cleaned, _ := removeDiacritics(unescaped)
+		cleaned = norm.NFC.String(cleaned)
+		u.Path = cleaned
+		// It's good practice to reset RawPath
+		u.RawPath = ""
+	}
 }
