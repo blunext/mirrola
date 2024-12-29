@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -106,7 +105,7 @@ func main() {
 	var workersWg sync.WaitGroup
 	for i := 0; i < concurrency; i++ {
 		workersWg.Add(1)
-		go func(workerID int) {
+		go func() {
 			defer workersWg.Done()
 			for {
 				select {
@@ -127,7 +126,7 @@ func main() {
 					tasksWg.Done()
 				}
 			}
-		}(i)
+		}()
 	}
 
 	// Wait for all workers to finish
@@ -142,12 +141,12 @@ func main() {
 }
 
 // enqueueLink adds a link to the channel if it has not been processed yet and context is not canceled.
-func enqueueLink(ctx context.Context, link string, tasks chan<- string) {
+func enqueueLink(ctx context.Context, link string, tasks chan<- string) error {
 	visited.Lock()
 	defer visited.Unlock()
 
 	if visited.m[link] {
-		return
+		return nil
 	}
 	visited.m[link] = true
 	tasksWg.Add(1)
@@ -156,11 +155,15 @@ func enqueueLink(ctx context.Context, link string, tasks chan<- string) {
 	case <-ctx.Done():
 		// Do not enqueue if context is canceled
 		tasksWg.Done()
-		return
-	case tasks <- link:
-		// Enqueued successfully
+		return fmt.Errorf("[ERROR] Context canceled while enqueueing link: %s", link)
+	case tasks <- link: // Enqueued successfully
+		//fmt.Printf("[INFO] Enqueued link: %s\n", link)
+		return nil
+	default:
+		// channel is full - report an error
+		tasksWg.Done()
+		return fmt.Errorf("[ERROR] Queue is full, cannot enqueue link: %s", link)
 	}
-	//fmt.Printf("[INFO] Enqueued link: %s\n", link)
 }
 
 // processLink checks if the link is an asset or a page and processes it accordingly
@@ -178,13 +181,13 @@ func processLink(ctx context.Context, link string, tasks chan<- string) error {
 		fmt.Printf("[ERROR] Failed to process page %s: %v\n", link, err)
 		return err
 	}
-	if len(tasks)+len(links) > queueSize {
-		fmt.Printf("[WARN] Queue is full, no of links: %d\n", len(tasks)+len(links))
-		return errors.New("[ERROR] queue is full")
-	}
-	fmt.Printf("[INFO] Processed page: %s, found %d new links, queue size: %d\n", link, len(links), len(tasks))
+	fmt.Printf("[INFO] Processed page: %s, found %d new links\n", link, len(links))
 	for _, l := range links {
-		enqueueLink(ctx, l, tasks)
+		if err := enqueueLink(ctx, l, tasks); err != nil {
+			// loggin error and breaking processing in case of full channel
+			fmt.Printf("[ERROR] %v\n", err)
+			return err
+		}
 	}
 	return nil
 }
