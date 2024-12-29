@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -87,48 +88,61 @@ func main() {
 		return
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	fmt.Printf("Starting download for %s, number of workers: %d\n", *baseURL, concurrency)
 	tasks := make(chan string, queueSize)
 
-	enqueueLink(*baseURL, tasks)
+	enqueueLink(ctx, *baseURL, tasks)
 
 	go func() {
+		// Wait for all tasks to be done or context to be canceled
 		tasksWg.Wait()
+		cancel() // In case all tasks are done without error
 		close(tasks)
 	}()
 
 	var workersWg sync.WaitGroup
 	for i := 0; i < concurrency; i++ {
 		workersWg.Add(1)
-		go func() {
+		go func(workerID int) {
 			defer workersWg.Done()
-			for link := range tasks {
-				if err := processLink(link, tasks); err != nil {
-					fmt.Printf("[ERROR] Failed to process link: %s - %v\n", link, err)
-					if processError.Load() == nil {
-						processError.Store(err)
-					} else {
-						processError.Store(fmt.Errorf("%v; %v", processError.Load(), err))
-					}
+			for {
+				select {
+				case <-ctx.Done():
 					return
+				case link, ok := <-tasks:
+					if !ok {
+						return
+					}
+					if err := processLink(ctx, link, tasks); err != nil {
+						fmt.Printf("[ERROR] Failed to process link: %s - %v\n", link, err)
+						if processError.Load() == nil {
+							processError.Store(err)
+							cancel()
+						}
+						return
+					}
+					tasksWg.Done()
 				}
-				tasksWg.Done()
 			}
-		}()
+		}(i)
 	}
 
 	// Wait for all workers to finish
 	workersWg.Wait()
 
-	if err := processError.Load(); err != nil {
+	// Check if there was an error
+	if err, ok := processError.Load().(error); ok && err != nil {
 		fmt.Printf("[ERROR] Processing failed: %v\n", err)
-		return
+		os.Exit(1)
 	}
 	fmt.Println("Downloading completed.")
 }
 
-// enqueueLink adds a link to the channel if it has not been processed yet.
-func enqueueLink(link string, tasks chan<- string) {
+// enqueueLink adds a link to the channel if it has not been processed yet and context is not canceled.
+func enqueueLink(ctx context.Context, link string, tasks chan<- string) {
 	visited.Lock()
 	defer visited.Unlock()
 
@@ -137,22 +151,29 @@ func enqueueLink(link string, tasks chan<- string) {
 	}
 	visited.m[link] = true
 	tasksWg.Add(1)
-	tasks <- link
+
+	select {
+	case <-ctx.Done():
+		// Do not enqueue if context is canceled
+		tasksWg.Done()
+		return
+	case tasks <- link:
+		// Enqueued successfully
+	}
 	//fmt.Printf("[INFO] Enqueued link: %s\n", link)
 }
 
 // processLink checks if the link is an asset or a page and processes it accordingly
-func processLink(link string, tasks chan<- string) error {
+func processLink(ctx context.Context, link string, tasks chan<- string) error {
 	//fmt.Printf("[INFO] Processing link: %s, queue size: %d\n", link, len(tasks))
 	if isStaticAsset(link) {
-		// [MOD] Przekazujemy tasks do downloadAsset, aby móc z CSS wyciągać kolejne linki
-		if err := downloadAsset(link, tasks); err != nil {
+		if err := downloadAsset(ctx, link, tasks); err != nil {
 			fmt.Printf("[ERROR] Failed to download asset: %s - %v\n", link, err)
 			return err
 		}
 		return nil
 	}
-	links, err := processPage(link)
+	links, err := processPage(ctx, link)
 	if err != nil {
 		fmt.Printf("[ERROR] Failed to process page %s: %v\n", link, err)
 		return err
@@ -163,21 +184,25 @@ func processLink(link string, tasks chan<- string) error {
 	}
 	fmt.Printf("[INFO] Processed page: %s, found %d new links, queue size: %d\n", link, len(links), len(tasks))
 	for _, l := range links {
-		enqueueLink(l, tasks)
+		enqueueLink(ctx, l, tasks)
 	}
 	return nil
 }
 
 // processPage downloads the HTML page, filters unwanted tags, modifies links, saves it, and returns newly found links
-func processPage(pageURL string) ([]string, error) {
-	resp, err := http.Get(pageURL)
+func processPage(ctx context.Context, pageURL string) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("download page failed, HTTP status: %d", resp.StatusCode)
+		return nil, fmt.Errorf("download page failed: %s, HTTP status: %d, %s", pageURL, resp.StatusCode, resp.Status)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -693,7 +718,7 @@ func isStaticAsset(link string) bool {
 
 // downloadAsset downloads the asset from the server and saves it to the disk.
 // If the asset is a CSS file, it will be processed to rewrite URLs.
-func downloadAsset(link string, tasks chan<- string) error {
+func downloadAsset(ctx context.Context, link string, tasks chan<- string) error {
 	outputFile := getOutputPath(link)
 
 	// Check if the file already exists
@@ -703,7 +728,11 @@ func downloadAsset(link string, tasks chan<- string) error {
 	}
 
 	//fmt.Printf("[INFO] Downloading asset: %s\n", link)
-	resp, err := http.Get(link)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, link, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -733,7 +762,7 @@ func downloadAsset(link string, tasks chan<- string) error {
 
 		// every new link from the same domain, enqueue:
 		for _, l := range foundLinks {
-			enqueueLink(l, tasks)
+			enqueueLink(ctx, l, tasks)
 		}
 
 		// save the modified CSS content to the file
@@ -862,7 +891,7 @@ func replaceTextContent(n *html.Node, newText string) {
 func decodeUnicodeEscapes(s string) string {
 	return unicodeEsc.ReplaceAllStringFunc(s, func(m string) string {
 		// m has the form e.g. "\u2013"
-		hexVal := m[2:] // cat "/u" prefix
+		hexVal := m[2:] // remove "\u" prefix
 		r, err := strconv.ParseInt(hexVal, 16, 32)
 		if err != nil {
 			return m
