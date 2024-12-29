@@ -34,9 +34,9 @@ var (
 		sync.Mutex
 		m map[string]bool
 	}{m: make(map[string]bool)}
-	re         = regexp.MustCompile(`url\(\s*['"]?\s*(https?://[^'")]+?)\s*['"]?\s*\)`) // Example regex that captures url('...') or url("...") or url(...).
-	reJS       = regexp.MustCompile(`(https?://[^\s"']+)`)                              // Example regex that captures http:// or https:// up to the first whitespace or quote.
-	unicodeEsc = regexp.MustCompile(`\\u[0-9A-Fa-f]{4}`)                                // Example regex that captures \uXXXX unicode escapes.
+	re         = regexp.MustCompile(`url\(\s*['"]?\s*([^'")]+?)\s*['"]?\s*\)`) // Example regex that captures url('...') or url("...") or url(...)
+	reJS       = regexp.MustCompile(`(https?://[^\s"']+)`)                     // Example regex that captures http:// or https:// up to the first whitespace or quote.
+	unicodeEsc = regexp.MustCompile(`\\u[0-9A-Fa-f]{4}`)                       // Example regex that captures \uXXXX unicode escapes.
 	tasksWg    sync.WaitGroup
 	baseURL    *string
 	outputDir  *string
@@ -145,8 +145,8 @@ func enqueueLink(link string, tasks chan<- string) {
 func processLink(link string, tasks chan<- string) error {
 	//fmt.Printf("[INFO] Processing link: %s, queue size: %d\n", link, len(tasks))
 	if isStaticAsset(link) {
-		err := downloadAsset(link)
-		if err != nil {
+		// [MOD] Przekazujemy tasks do downloadAsset, aby móc z CSS wyciągać kolejne linki
+		if err := downloadAsset(link, tasks); err != nil {
 			fmt.Printf("[ERROR] Failed to download asset: %s - %v\n", link, err)
 			return err
 		}
@@ -609,6 +609,48 @@ func processInlineJS(jsContent, currentURL, baseURL string) (string, []string) {
 	return newJS, foundLinks
 }
 
+// processCSSFile processes the content of a CSS file (downloaded from the server):
+func processCSSFile(cssContent string, cssURL, baseURL string) (string, []string) {
+	var foundLinks []string
+
+	// similar to processInlineCSS
+	newCSS := re.ReplaceAllStringFunc(cssContent, func(match string) string {
+		urls := re.FindStringSubmatch(match)
+		if len(urls) < 2 {
+			return match
+		}
+		originalLink := urls[1]
+
+		// if starts with data:, do nothing and return the original
+		// data is base64 encoded image, we don't want to process it
+		if strings.HasPrefix(originalLink, "data:") {
+			return match
+		}
+
+		absLink, err := resolveURL(cssURL, originalLink)
+		if err != nil {
+			return match
+		}
+		if isSameDomain(absLink.String(), baseURL) {
+			foundLinks = append(foundLinks, absLink.String())
+
+			if *rewriteUrl && absLink.RawQuery != "" {
+				if isStaticAsset(absLink.String()) {
+					absLink = rewriteAssetURL(absLink)
+				} else {
+					absLink = rewritePageURL(absLink)
+				}
+			}
+			fixPath(absLink)
+			relativeURL := convertToRelative(absLink.String(), baseURL)
+			return fmt.Sprintf("url('%s')", relativeURL)
+		}
+		return match
+	})
+
+	return newCSS, foundLinks
+}
+
 // convertToRelative removes the base from the link if it starts with it
 func convertToRelative(link, base string) string {
 	if strings.HasPrefix(link, base) {
@@ -649,8 +691,9 @@ func isStaticAsset(link string) bool {
 	return false
 }
 
-// downloadAsset fetches the file and saves it locally
-func downloadAsset(link string) error {
+// downloadAsset downloads the asset from the server and saves it to the disk.
+// If the asset is a CSS file, it will be processed to rewrite URLs.
+func downloadAsset(link string, tasks chan<- string) error {
 	outputFile := getOutputPath(link)
 
 	// Check if the file already exists
@@ -675,6 +718,39 @@ func downloadAsset(link string) error {
 		return err
 	}
 
+	ext := strings.ToLower(filepath.Ext(link))
+
+	// if the file is CSS, we will first download it to memory, process it, and then save it to disk
+	if ext == ".css" {
+		cssBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		cssContent := string(cssBytes)
+
+		// processing CSS file to rewrite url(...)
+		newCSS, foundLinks := processCSSFile(cssContent, link, *baseURL)
+
+		// every new link from the same domain, enqueue:
+		for _, l := range foundLinks {
+			enqueueLink(l, tasks)
+		}
+
+		// save the modified CSS content to the file
+		file, err := os.Create(outputFile)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+
+		_, err = file.WriteString(newCSS)
+		if err == nil {
+			fmt.Printf("[INFO] Saved CSS asset: %s -> %s\n", link, outputFile)
+		}
+		return err
+	}
+
+	// in other cases (images, fonts, js, etc.) we copy directly:
 	file, err := os.Create(outputFile)
 	if err != nil {
 		return err
