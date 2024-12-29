@@ -19,6 +19,7 @@ import (
 	"unicode"
 
 	"golang.org/x/net/html"
+	"golang.org/x/text/runes"
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
 )
@@ -797,11 +798,9 @@ func decodeUnicodeEscapes(s string) string {
 // removeDiacritics removes combining marks from a string and normalizes to NFC
 func removeDiacritics(s string) (string, error) {
 	t := transform.Chain(
-		norm.NFD,
-		transform.RemoveFunc(func(r rune) bool {
-			return unicode.Is(unicode.Mn, r)
-		}),
-		norm.NFC,
+		norm.NFD,                           // Normalize to NFD (decomposed form)
+		runes.Remove(runes.In(unicode.Mn)), // Remove all non-spacing marks
+		norm.NFC,                           // Recompose to NFC (composed form)
 	)
 	result, _, err := transform.String(t, s)
 	return result, err
