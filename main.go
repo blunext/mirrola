@@ -77,8 +77,8 @@ func main() {
 	var processError atomic.Value
 
 	baseURL = flag.String("url", "", "Base URL to start crawling")
-	outputDir = flag.String("dir", "./output", "Output directory")
-	rewriteUrl = flag.Bool("rewrite", false, "Rewrite URLs based on query parameters")
+	outputDir = flag.String("dir", "./static", "Output directory")
+	rewriteUrl = flag.Bool("rewrite", false, "Rewrite URLs, incorporating query parameters into the filename")
 	flag.Parse()
 
 	if *baseURL == "" {
