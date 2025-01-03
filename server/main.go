@@ -12,7 +12,7 @@ import (
 
 func main() {
 	// Define the -dir flag for specifying the directory to serve
-	dir := flag.String("dir", "./output", "the directory to serve")
+	dir := flag.String("dir", "./static", "the directory to serve")
 	flag.Parse()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
