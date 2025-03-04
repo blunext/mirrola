@@ -3,23 +3,22 @@ package main
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"regexp"
 	"strings"
 )
 
-// Replace definiuje pojedynczą regułę zastępowania.
+// Replace defines a single replacement rule.
 type Replace struct {
 	oldText string
 	newText string
 }
 
-// ReplaceList to lista reguł zastępowania.
+// ReplaceList is a list of replacement rules.
 type ReplaceList []Replace
 
-// Zdefiniowane reguły – można je rozszerzać według potrzeb.
+// Defined rules – can be extended as needed.
 var rules = ReplaceList{
 	{"https://olamundo.pl", "http://localhost:8000"},
 	{"HTTPS://OLAMUNDO.PL", "http://localhost:8000"},
@@ -33,7 +32,7 @@ var rules = ReplaceList{
 	{`\\/home\\/olamundo\\/domains\\/olamundo.pl\\/public_html`, `\/var\/www\/html`},
 }
 
-// applyRules przechodzi po liście reguł i zamienia wystąpienia oldText na newText.
+// applyRules iterates through the list of rules and replaces occurrences of oldText with newText.
 func applyRules(text string) string {
 	for _, r := range rules {
 		text = strings.ReplaceAll(text, r.oldText, r.newText)
@@ -42,58 +41,58 @@ func applyRules(text string) string {
 }
 
 func main() {
-	// Parsowanie flag wejścia i wyjścia.
-	inputFile := flag.String("input", "/Users/blt1wz/priv/mirrola/wordpress/wordpress_db-oryg.sql", "Plik wejściowy SQL")
-	outputFile := flag.String("output", "/Users/blt1wz/priv/mirrola/wordpress/wordpress.sql", "Plik wyjściowy SQL")
+	// Parse input and output file flags.
+	inputFile := flag.String("input", "/Users/blt1wz/priv/mirrola/wordpress/wordpress_db-oryg.sql", "Input SQL file")
+	outputFile := flag.String("output", "/Users/blt1wz/priv/mirrola/wordpress/wordpress.sql", "Output SQL file")
 	flag.Parse()
 
 	if *inputFile == "" || *outputFile == "" {
-		log.Fatal("Musisz podać flagi -input oraz -output")
+		log.Fatal("You must specify both -input and -output flags")
 	}
 
-	data, err := ioutil.ReadFile(*inputFile)
+	data, err := os.ReadFile(*inputFile)
 	if err != nil {
-		log.Fatalf("Błąd podczas odczytu pliku: %v", err)
+		log.Fatalf("Error reading file: %v", err)
 	}
 	content := string(data)
 
-	// Wyrażenie regularne do znajdowania ciągów serializowanych PHP.
-	// Wzorzec dopasowuje ciągi postaci:
-	// s:<liczba>:"treść";
-	// lub z escape’owanymi cudzysłowami, np.: s:<liczba>:\"treść\";
-	// (?s) powoduje, że kropka dopasowuje również znaki nowej linii.
+	// Regular expression to find serialized PHP strings.
+	// The pattern matches strings in the format:
+	// s:<number>:"content";
+	// or with escaped quotes, e.g.: s:<number>:\"content\";
+	// (?s) ensures that the dot also matches newlines.
 	re := regexp.MustCompile(`(?s)s:(\d+):(\\?"|")(.+?)(\\?"|");`)
 	newContent := re.ReplaceAllStringFunc(content, func(match string) string {
 		submatches := re.FindStringSubmatch(match)
 		if len(submatches) < 5 {
 			return match
 		}
-		// submatches[1] – oryginalna długość (jako string)
-		// submatches[2] – otwierający cudzysłów (może być z backslashem)
-		// submatches[3] – zawartość serializowanego ciągu
-		// submatches[4] – zamykający cudzysłów
+		// submatches[1] – original length (as a string)
+		// submatches[2] – opening quote (may be escaped)
+		// submatches[3] – serialized string content
+		// submatches[4] – closing quote
 		origLengthStr := submatches[1]
 		openingQuote := submatches[2]
 		innerText := submatches[3]
 		closingQuote := submatches[4]
 
-		// Zastąpienie ciągu wg reguł.
+		// Replace the string according to the rules.
 		replacedText := applyRules(innerText)
 
-		// Obliczenie nowej długości (w bajtach – zgodnie z PHP)
+		// Calculate the new length (in bytes – as per PHP)
 		newLength := len(replacedText)
 
-		// Dla informacji, można wypisać oryginalną długość:
-		_ = origLengthStr // (nieużywane, ale można logować, jeśli potrzeba)
+		// For debugging purposes, the original length can be logged if needed:
+		_ = origLengthStr // (unused, but can be logged if necessary)
 
-		// Rekonstruowanie fragmentu z nową długością.
+		// Reconstruct the segment with the new length.
 		return fmt.Sprintf("s:%d:%s%s%s;", newLength, openingQuote, replacedText, closingQuote)
 	})
 
-	// Dla części, które nie były serializacjami – wykonaj globalne zastąpienie.
+	// Apply global replacements to parts that are not serialized strings.
 	finalContent := applyRules(newContent)
 
 	if err = os.WriteFile(*outputFile, []byte(finalContent), 0644); err != nil {
-		log.Fatalf("Błąd podczas zapisu pliku: %v", err)
+		log.Fatalf("Error writing file: %v", err)
 	}
 }

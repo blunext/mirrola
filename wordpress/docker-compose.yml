@@ -1,0 +1,70 @@
+services:
+  db:
+    image: mariadb:10.5
+    restart: always
+    container_name: db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - wordpress_network
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 1s
+      retries: 5
+
+  wordpress:
+    image: wordpress:6.7.1-php8.3-apache
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:80"
+    restart: always
+    container_name: wordpress
+    environment:
+      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
+    volumes:
+      - ./wordpress_data:/var/www/html
+    networks:
+      - wordpress_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: db
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    networks:
+      - wordpress_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+
+volumes:
+  db_data:
+  wordpress_data:
+
+networks:
+  wordpress_network:
+    driver: bridge
