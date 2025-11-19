@@ -8,23 +8,23 @@ import (
 	"golang.org/x/net/html"
 )
 
-// Helper function to initialize rewriteUrl and restore it after the test
-func withRewriteUrl(t *testing.T, value bool, testFunc func()) {
-	// Backup the original rewriteUrl value
-	var originalRewriteUrl bool
-	if rewriteUrl != nil {
-		originalRewriteUrl = *rewriteUrl
+// Helper function to initialize rewriteURL and restore it after the test
+func withRewriteURL(t *testing.T, value bool, testFunc func()) {
+	// Backup the original rewriteURL value
+	var originalRewriteURL bool
+	if rewriteURL != nil {
+		originalRewriteURL = *rewriteURL
 	} else {
-		// If rewriteUrl is nil, initialize it with a default value
-		originalRewriteUrl = true // Assuming default is true
+		// If rewriteURL is nil, initialize it with a default value
+		originalRewriteURL = true // Assuming default is true
 	}
-	// Ensure rewriteUrl points to a test variable
-	testRewriteUrl := value
-	rewriteUrl = &testRewriteUrl
+	// Ensure rewriteURL points to a test variable
+	testRewriteURL := value
+	rewriteURL = &testRewriteURL
 
-	// Defer restoration of the original rewriteUrl
+	// Defer restoration of the original rewriteURL
 	defer func() {
-		rewriteUrl = &originalRewriteUrl
+		rewriteURL = &originalRewriteURL
 	}()
 
 	// Execute the test function
@@ -105,8 +105,8 @@ func TestProcessInlineCSS(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Initialize rewriteUrl for the test case
-			withRewriteUrl(t, tt.rewriteUrl, func() {
+			// Initialize rewriteURL for the test case
+			withRewriteURL(t, tt.rewriteUrl, func() {
 				modifiedCSS, found := processInlineCSS(tt.css, tt.currentURL, tt.baseURL)
 
 				assert.Equal(t, tt.expectedCSS, modifiedCSS, "CSS should be modified correctly")
@@ -190,8 +190,8 @@ func TestProcessInlineStyle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Initialize rewriteUrl for the test case
-			withRewriteUrl(t, tt.rewriteUrl, func() {
+			// Initialize rewriteURL for the test case
+			withRewriteURL(t, tt.rewriteUrl, func() {
 				modifiedStyle, found := processInlineStyle(tt.style, tt.currentURL, tt.baseURL)
 
 				assert.Equal(t, tt.expected, modifiedStyle, "Style should be modified correctly")
@@ -359,14 +359,14 @@ func TestModifyLinks(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Initialize rewriteUrl for the test case
-			withRewriteUrl(t, tt.rewriteUrl, func() {
+			// Initialize rewriteURL for the test case
+			withRewriteURL(t, tt.rewriteUrl, func() {
 				// Parse the input HTML
 				doc, err := html.Parse(strings.NewReader(tt.htmlInput))
 				assert.NoError(t, err, "HTML should parse without error")
 
 				// Process the links
-				foundLinks := modifyLinks(doc, tt.currentURL, tt.baseURL)
+				foundLinks := rewriteLinks(doc, tt.currentURL, tt.baseURL)
 
 				// Render the modified HTML
 				var buf strings.Builder
