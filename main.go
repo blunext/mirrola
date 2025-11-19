@@ -250,8 +250,15 @@ func processURL(ctx context.Context, link string, tasks chan<- string) error {
 		ct = ct[:i]
 	}
 
+	isHTML := ct == "text/html" || ct == "application/xhtml+xml"
+	if !isHTML && ct == "" {
+		if looksLikeHTML(resp) {
+			isHTML = true
+		}
+	}
+
 	switch {
-	case ct == "text/html" || ct == "application/xhtml+xml" || (ct == "" && looksLikeHTML(resp)):
+	case isHTML:
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return err
