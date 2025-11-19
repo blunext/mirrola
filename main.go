@@ -35,11 +35,12 @@ var (
 	concurrency int
 	queueSize   int
 
-	baseURL    *string
-	outputDir  *string
-	rewriteURL *bool
-	userAgent  *string
-	timeoutSec *int
+	baseURL       *string
+	outputDir     *string
+	rewriteURL    *bool
+	safeFilenames *bool
+	userAgent     *string
+	timeoutSec    *int
 
 	client *http.Client
 
@@ -83,11 +84,12 @@ func main() {
 	timeoutSec = flag.Int("timeout", 20, "HTTP timeout in seconds")
 	flag.IntVar(&queueSize, "queue", 10000, "Task queue size")
 	flag.IntVar(&concurrency, "concurrency", runtime.NumCPU(), "Number of workers")
+	safeFilenames = flag.Bool("safe-filenames", false, "Use percent-encoded filenames (safer) instead of ASCII transliteration")
 	flag.Parse()
 
 	if *baseURL == "" {
-		fmt.Println("Error: -url is required")
-		os.Exit(2)
+		flag.Usage()
+		os.Exit(1)
 	}
 
 	client = &http.Client{Timeout: time.Duration(*timeoutSec) * time.Second, Transport: &http.Transport{MaxIdleConns: 64, MaxIdleConnsPerHost: 8, IdleConnTimeout: 30 * time.Second}}
@@ -177,11 +179,12 @@ func normalize(u *url.URL) *url.URL {
 func enqueueLink(ctx context.Context, link string, tasks chan<- string) error {
 	u, err := url.Parse(link)
 	if err != nil {
-		return nil
+		return fmt.Errorf("failed to parse URL %s: %w", link, err)
 	}
 	if disallowedSchemes[strings.ToLower(u.Scheme)] {
 		return nil
 	}
+	fixPath(u)
 	u = normalize(u)
 	link = u.String()
 
@@ -258,7 +261,9 @@ func processURL(ctx context.Context, link string, tasks chan<- string) error {
 			return err
 		}
 		for _, l := range links {
-			_ = enqueueLink(ctx, l, tasks)
+			if err := enqueueLink(ctx, l, tasks); err != nil {
+				fmt.Printf("[ERROR] Failed to enqueue link %s: %v\n", l, err)
+			}
 		}
 		return nil
 	case ct == "text/css":
@@ -270,7 +275,9 @@ func processURL(ctx context.Context, link string, tasks chan<- string) error {
 		css := string(b)
 		newCSS, found := processCSSFile(css, link, *baseURL)
 		for _, l := range found {
-			_ = enqueueLink(ctx, l, tasks)
+			if err := enqueueLink(ctx, l, tasks); err != nil {
+				fmt.Printf("[ERROR] Failed to enqueue CSS link %s: %v\n", l, err)
+			}
 		}
 		out := getOutputPath(link, ct)
 		return writeFile(out, strings.NewReader(newCSS))
@@ -623,7 +630,17 @@ func toRelative(abs *url.URL, base string) string {
 	if !strings.EqualFold(abs.Host, b.Host) {
 		return abs.String()
 	}
-	return abs.Path + func() string {
+
+	// If safe filenames are enabled, use EscapedPath to ensure links in HTML match the files on disk
+	// and to prevent html.Render from normalizing UTF-8 characters to NFD.
+	var pathStr string
+	if *safeFilenames {
+		pathStr = abs.EscapedPath()
+	} else {
+		pathStr = abs.Path
+	}
+
+	return pathStr + func() string {
 		if abs.RawQuery != "" {
 			return "?" + abs.RawQuery
 		}
@@ -639,10 +656,18 @@ func getOutputPath(link string, contentType string) string {
 		return filepath.Join(*outputDir, "index.html")
 	}
 
-	pathPart := norm.NFC.String(u.Path)
-	if cleaned, err2 := removeDiacritics(pathPart); err2 == nil {
-		pathPart = cleaned
+	var pathPart string
+	if *safeFilenames {
+		// Use percent-encoded path, preserving slashes
+		pathPart = u.EscapedPath()
+		// EscapedPath might start with /, which filepath.Join handles, but let's be consistent
+	} else {
+		pathPart = norm.NFC.String(u.Path)
+		if cleaned, err2 := removeDiacritics(pathPart); err2 == nil {
+			pathPart = cleaned
+		}
 	}
+
 	if pathPart == "" || pathPart == "/" {
 		pathPart = "/index.html"
 	} else {
@@ -675,13 +700,20 @@ func getOutputPath(link string, contentType string) string {
 		} else {
 			u = rewritePageURL(u)
 		}
-		pathPart = u.Path
+		if *safeFilenames {
+			pathPart = u.EscapedPath()
+		} else {
+			pathPart = u.Path
+		}
 	}
 
 	final := filepath.Join(*outputDir, pathPart)
-	final = norm.NFC.String(final)
-	if cleaned, err2 := removeDiacritics(final); err2 == nil {
-		final = cleaned
+
+	if !*safeFilenames {
+		final = norm.NFC.String(final)
+		if cleaned, err2 := removeDiacritics(final); err2 == nil {
+			final = cleaned
+		}
 	}
 	return final
 }
@@ -794,8 +826,14 @@ func fixPath(u *url.URL) {
 		}
 	}
 
-	if cleaned, _ := removeDiacritics(path); cleaned != "" {
-		u.Path = norm.NFC.String(cleaned)
+	if *safeFilenames {
+		// In safe mode, we just want to ensure it's NFC normalized UTF-8 in the Path field.
+		// The EscapedPath() will be used later for saving/linking.
+		u.Path = norm.NFC.String(path)
+	} else {
+		if cleaned, _ := removeDiacritics(path); cleaned != "" {
+			u.Path = norm.NFC.String(cleaned)
+		}
 	}
 	u.RawPath = ""
 }
