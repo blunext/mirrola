@@ -157,10 +157,20 @@ func normalize(u *url.URL) *url.URL {
 	if (u.Scheme == "http" && strings.HasSuffix(u.Host, ":80")) || (u.Scheme == "https" && strings.HasSuffix(u.Host, ":443")) {
 		u.Host = strings.Split(u.Host, ":")[0]
 	}
-	// clean dot segments
-	if p := u.EscapedPath(); p != "" {
-		u.Path = path.Clean("/" + p)
+	// clean dot segments using decoded path
+	if u.Path != "" {
+		// path.Clean assumes forward slashes which is correct for URLs
+		cleaned := path.Clean(u.Path)
+		// Ensure absolute path starts with / if original did (path.Clean might remove it if it thinks it's relative?)
+		// Actually path.Clean("/") -> "/". path.Clean("/foo") -> "/foo".
+		// But path.Clean("foo") -> "foo".
+		// URL path usually starts with / if it's absolute path.
+		if strings.HasPrefix(u.Path, "/") && !strings.HasPrefix(cleaned, "/") {
+			cleaned = "/" + cleaned
+		}
+		u.Path = cleaned
 	}
+	u.RawPath = "" // Clear RawPath to force re-encoding based on new Path
 	return u
 }
 
@@ -746,19 +756,48 @@ func isStaticAssetExt(ext string) bool {
 }
 
 func removeDiacritics(s string) (string, error) {
+	// First, handle Polish special characters that don't decompose with NFD
+	replacer := strings.NewReplacer(
+		"ł", "l", "Ł", "L",
+		"ą", "a", "Ą", "A",
+		"ć", "c", "Ć", "C",
+		"ę", "e", "Ę", "E",
+		"ń", "n", "Ń", "N",
+		"ś", "s", "Ś", "S",
+		"ź", "z", "Ź", "Z",
+		"ż", "z", "Ż", "Z",
+	)
+	s = replacer.Replace(s)
+
+	// Then apply NFD normalization for composed diacritics (ó, á, etc.)
 	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
 	result, _, err := transform.String(t, s)
 	return result, err
 }
 
 func fixPath(u *url.URL) {
-	unescaped, err := url.PathUnescape(u.EscapedPath())
-	if err == nil {
-		if cleaned, _ := removeDiacritics(unescaped); cleaned != "" {
-			u.Path = norm.NFC.String(cleaned)
+	// Ensure path is fully decoded
+	path := u.Path
+	if strings.Contains(path, "%") {
+		if unescaped, err := url.PathUnescape(path); err == nil {
+			path = unescaped
 		}
-		u.RawPath = ""
 	}
+
+	// Also check EscapedPath just in case u.Path was not fully representative
+	if unescaped, err := url.PathUnescape(u.EscapedPath()); err == nil {
+		// Prefer the one that is more decoded?
+		// Actually, just use the one that seems to have worked best.
+		// But let's stick to the logic: decode -> remove diacritics -> encode back (via u.Path assignment)
+		if len(unescaped) < len(path) || (len(unescaped) == len(path) && unescaped != path) {
+			path = unescaped
+		}
+	}
+
+	if cleaned, _ := removeDiacritics(path); cleaned != "" {
+		u.Path = norm.NFC.String(cleaned)
+	}
+	u.RawPath = ""
 }
 
 // --- Query rewrite policy (with hashing for long queries) ---
