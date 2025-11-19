@@ -642,7 +642,11 @@ func toRelative(abs *url.URL, base string) string {
 	// and to prevent html.Render from normalizing UTF-8 characters to NFD.
 	var pathStr string
 	if *safeFilenames {
-		pathStr = abs.EscapedPath()
+		// Force NFC for local links because getOutputPath saves files as NFC.
+		// We need the link in HTML (%C3%B3) to match the file on disk (ó).
+		// If we used abs.EscapedPath() directly, it might be NFD (%CC%81) if the source was NFD,
+		// which would mismatch the NFC file on non-Mac filesystems.
+		pathStr = (&url.URL{Path: norm.NFC.String(abs.Path)}).EscapedPath()
 	} else {
 		pathStr = abs.Path
 	}
@@ -665,9 +669,8 @@ func getOutputPath(link string, contentType string) string {
 
 	var pathPart string
 	if *safeFilenames {
-		// Use percent-encoded path, preserving slashes
-		pathPart = u.EscapedPath()
-		// EscapedPath might start with /, which filepath.Join handles, but let's be consistent
+		// Use decoded path (UTF-8) for file system, so web servers can find it when decoding URL
+		pathPart = norm.NFC.String(u.Path)
 	} else {
 		pathPart = norm.NFC.String(u.Path)
 		if cleaned, err2 := removeDiacritics(pathPart); err2 == nil {
@@ -707,11 +710,9 @@ func getOutputPath(link string, contentType string) string {
 		} else {
 			u = rewritePageURL(u)
 		}
-		if *safeFilenames {
-			pathPart = u.EscapedPath()
-		} else {
-			pathPart = u.Path
-		}
+		// Always use Path (decoded) for filesystem, regardless of safeFilenames
+		// safeFilenames only affects how links are written in HTML (via toRelative)
+		pathPart = u.Path
 	}
 
 	final := filepath.Join(*outputDir, pathPart)
@@ -721,6 +722,9 @@ func getOutputPath(link string, contentType string) string {
 		if cleaned, err2 := removeDiacritics(final); err2 == nil {
 			final = cleaned
 		}
+	} else {
+		// In safe mode, ensure NFC normalization for the full path
+		final = norm.NFC.String(final)
 	}
 	return final
 }
@@ -834,9 +838,10 @@ func fixPath(u *url.URL) {
 	}
 
 	if *safeFilenames {
-		// In safe mode, we just want to ensure it's NFC normalized UTF-8 in the Path field.
-		// The EscapedPath() will be used later for saving/linking.
-		u.Path = norm.NFC.String(path)
+		// In safe mode, do NOT force NFC here. The server might require NFD (e.g. WordPress).
+		// We will handle NFC normalization only when saving to disk (getOutputPath)
+		// and writing local links (toRelative).
+		// u.Path = norm.NFC.String(path) <--- REMOVED
 	} else {
 		if cleaned, _ := removeDiacritics(path); cleaned != "" {
 			u.Path = norm.NFC.String(cleaned)
