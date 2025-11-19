@@ -205,14 +205,18 @@ func doRequest(ctx context.Context, method, u string) (*http.Response, error) {
 }
 
 func headOrGet(ctx context.Context, u string) (*http.Response, error) {
+	// Try HEAD first to check content type and availability
 	resp, err := doRequest(ctx, http.MethodHead, u)
-	if err != nil || resp.StatusCode >= 400 || resp.Header.Get("Content-Type") == "" {
+	if err != nil || resp.StatusCode >= 400 {
+		// HEAD failed, try GET directly
 		if resp != nil {
 			resp.Body.Close()
 		}
 		return doRequest(ctx, http.MethodGet, u)
 	}
-	return resp, nil
+	// HEAD succeeded, close it and do GET to get the body
+	resp.Body.Close()
+	return doRequest(ctx, http.MethodGet, u)
 }
 
 // --- Routing based on Content-Type ---
