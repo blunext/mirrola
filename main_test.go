@@ -204,13 +204,14 @@ func TestProcessInlineStyle(t *testing.T) {
 // TestModifyLinks tests the modifyLinks function using table-driven tests.
 func TestModifyLinks(t *testing.T) {
 	tests := []struct {
-		name          string
-		htmlInput     string
-		currentURL    string
-		baseURL       string
-		rewriteUrl    bool
-		expectedHTML  string
-		expectedLinks []string
+		name           string
+		htmlInput      string
+		currentURL     string
+		baseURL        string
+		rewriteUrl     bool
+		expectedHTML   string
+		expectedAssets []string
+		expectedLinks  []string
 	}{
 		{
 			name: "No links in HTML",
@@ -218,11 +219,12 @@ func TestModifyLinks(t *testing.T) {
 				<head><title>Test Page</title></head>
 				<body><p>Hello World!</p></body>
 			</html>`,
-			currentURL:    "https://example.com/page",
-			baseURL:       "https://example.com",
-			rewriteUrl:    true,
-			expectedHTML:  `<html><head><title>Test Page</title></head><body><p>Hello World!</p></body></html>`,
-			expectedLinks: []string{},
+			currentURL:     "https://example.com/page",
+			baseURL:        "https://example.com",
+			rewriteUrl:     true,
+			expectedHTML:   `<html><head><title>Test Page</title></head><body><p>Hello World!</p></body></html>`,
+			expectedAssets: []string{},
+			expectedLinks:  []string{},
 		},
 		{
 			name: "Single href link",
@@ -230,11 +232,12 @@ func TestModifyLinks(t *testing.T) {
 				<head><title>Test Page</title></head>
 				<body><a href="https://example.com/about">About</a></body>
 			</html>`,
-			currentURL:    "https://example.com/page",
-			baseURL:       "https://example.com",
-			rewriteUrl:    false,
-			expectedHTML:  `<html><head><title>Test Page</title></head><body><a href="/about">About</a></body></html>`,
-			expectedLinks: []string{"https://example.com/about"},
+			currentURL:     "https://example.com/page",
+			baseURL:        "https://example.com",
+			rewriteUrl:     false,
+			expectedHTML:   `<html><head><title>Test Page</title></head><body><a href="/about">About</a></body></html>`,
+			expectedAssets: []string{},
+			expectedLinks:  []string{"https://example.com/about"},
 		},
 		{
 			name: "Multiple href and src links",
@@ -253,10 +256,12 @@ func TestModifyLinks(t *testing.T) {
 			baseURL:      "https://example.com",
 			rewriteUrl:   false,
 			expectedHTML: `<html><head><title>Test Page</title><link rel="stylesheet" href="/css/style.css"/><script src="/js/script.js"></script></head><body><img src="/images/logo.png" alt="Logo"/><a href="/contact">Contact</a></body></html>`,
-			expectedLinks: []string{
+			expectedAssets: []string{
 				"https://example.com/css/style.css",
 				"https://example.com/js/script.js",
 				"https://example.com/images/logo.png",
+			},
+			expectedLinks: []string{
 				"https://example.com/contact",
 			},
 		},
@@ -275,8 +280,10 @@ func TestModifyLinks(t *testing.T) {
 			baseURL:      "https://example.com",
 			rewriteUrl:   true,
 			expectedHTML: `<html><head><title>Test Page</title><link rel="stylesheet" href="/css/style_ver_1.2.css"/></head><body><a href="/search/index_q_golang.html">Search</a></body></html>`,
-			expectedLinks: []string{
+			expectedAssets: []string{
 				"https://example.com/css/style.css?ver=1.2",
+			},
+			expectedLinks: []string{
 				"https://example.com/search?q=golang",
 			},
 		},
@@ -291,11 +298,12 @@ func TestModifyLinks(t *testing.T) {
 					<a href="https://external.com/contact">Contact</a>
 				</body>
 			</html>`,
-			currentURL:    "https://example.com/page",
-			baseURL:       "https://example.com",
-			rewriteUrl:    false,
-			expectedHTML:  `<html><head><title>Test Page</title><link rel="stylesheet" href="https://external.com/css/style.css"/></head><body><a href="https://external.com/contact">Contact</a></body></html>`,
-			expectedLinks: []string{},
+			currentURL:     "https://example.com/page",
+			baseURL:        "https://example.com",
+			rewriteUrl:     false,
+			expectedHTML:   `<html><head><title>Test Page</title><link rel="stylesheet" href="https://external.com/css/style.css"/></head><body><a href="https://external.com/contact">Contact</a></body></html>`,
+			expectedAssets: []string{},
+			expectedLinks:  []string{},
 		},
 		{
 			name: "Malformed URLs should remain unchanged",
@@ -308,11 +316,12 @@ func TestModifyLinks(t *testing.T) {
 					<a href="ht!tp://[invalid-url]">Broken Link</a>
 				</body>
 			</html>`,
-			currentURL:    "https://example.com/page",
-			baseURL:       "https://example.com",
-			rewriteUrl:    false,
-			expectedHTML:  `<html><head><title>Test Page</title><link rel="stylesheet" href="ht!tp://[invalid-url]"/></head><body><a href="ht!tp://[invalid-url]">Broken Link</a></body></html>`,
-			expectedLinks: []string{},
+			currentURL:     "https://example.com/page",
+			baseURL:        "https://example.com",
+			rewriteUrl:     false,
+			expectedHTML:   `<html><head><title>Test Page</title><link rel="stylesheet" href="ht!tp://[invalid-url]"/></head><body><a href="ht!tp://[invalid-url]">Broken Link</a></body></html>`,
+			expectedAssets: []string{},
+			expectedLinks:  []string{},
 		},
 		{
 			name: "Style attribute processing",
@@ -328,9 +337,10 @@ func TestModifyLinks(t *testing.T) {
 			baseURL:      "https://example.com",
 			rewriteUrl:   false,
 			expectedHTML: `<html><head><title>Test Page</title></head><body><div style="background: url(&#39;/images/bg.png&#39;);"></div></body></html>`,
-			expectedLinks: []string{
+			expectedAssets: []string{
 				"https://example.com/images/bg.png",
 			},
+			expectedLinks: []string{},
 		},
 		{
 			name: "Style tag processing",
@@ -351,9 +361,10 @@ func TestModifyLinks(t *testing.T) {
 			expectedHTML: `<html><head><title>Test Page</title><style>
 						body { background-image: url('/images/bg.css.png'); }
 					</style></head><body><p>Hello World!</p></body></html>`,
-			expectedLinks: []string{
+			expectedAssets: []string{
 				"https://example.com/images/bg.css.png",
 			},
+			expectedLinks: []string{},
 		},
 	}
 
@@ -366,7 +377,7 @@ func TestModifyLinks(t *testing.T) {
 				assert.NoError(t, err, "HTML should parse without error")
 
 				// Process the links
-				foundLinks := rewriteLinks(doc, tt.currentURL, tt.baseURL)
+				foundAssets, foundLinks := rewriteLinks(doc, tt.currentURL, tt.baseURL)
 
 				// Render the modified HTML
 				var buf strings.Builder
@@ -378,6 +389,7 @@ func TestModifyLinks(t *testing.T) {
 				expectedHTML := normalizeHTML(tt.expectedHTML)
 
 				assert.Equal(t, expectedHTML, modifiedHTML, "HTML should be modified correctly")
+				assert.ElementsMatch(t, tt.expectedAssets, foundAssets, "Found assets should match expected assets")
 				assert.ElementsMatch(t, tt.expectedLinks, foundLinks, "Found links should match expected links")
 			})
 		})

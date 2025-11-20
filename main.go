@@ -50,12 +50,20 @@ var (
 		m map[string]bool
 	}{m: make(map[string]bool)}
 
-	reCSSURL   = regexp.MustCompile(`url\(\s*['"]?\s*([^'\")]+?)\s*['"]?\s*\)`) // url('...')
-	reJSAbsURL = regexp.MustCompile(`(https?://[^\s"']+)`)                      // https://...
-	unicodeEsc = regexp.MustCompile(`\\u[0-9A-Fa-f]{4}`)
+	reCSSURL   *regexp.Regexp
+	reJSAbsURL *regexp.Regexp
+	unicodeEsc *regexp.Regexp
 
 	tasksWg sync.WaitGroup
 )
+
+func init() {
+	fmt.Println("DEBUG: init() called")
+	reCSSURL = regexp.MustCompile(`url\(\s*['"]?\s*([^'\")]+?)\s*['"]?\s*\)`) // url('...')
+	reJSAbsURL = regexp.MustCompile(`(https?://[^\s"']+)`)                    // https://...
+	unicodeEsc = regexp.MustCompile(`\\u[0-9A-Fa-f]{4}`)
+	fmt.Printf("DEBUG: reCSSURL initialized: %v\n", reCSSURL)
+}
 
 // task represents a URL to crawl with its depth
 type task struct {
@@ -323,10 +331,17 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 		if err != nil {
 			return err
 		}
-		links, err := processHTML(ctx, link, body)
+		assets, links, err := processHTML(ctx, link, body)
 		if err != nil {
 			return err
 		}
+		// Assets inherit current depth (they are part of the page)
+		for _, a := range assets {
+			if err := enqueueLink(ctx, a, depth, tasks); err != nil {
+				fmt.Printf("[ERROR] Failed to enqueue asset %s: %v\n", a, err)
+			}
+		}
+		// Links increase depth
 		for _, l := range links {
 			if err := enqueueLink(ctx, l, depth+1, tasks); err != nil {
 				fmt.Printf("[ERROR] Failed to enqueue link %s: %v\n", l, err)
@@ -341,8 +356,9 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 		}
 		css := string(b)
 		newCSS, found := processCSSFile(css, link, *baseURL)
+		// CSS assets also inherit current depth
 		for _, l := range found {
-			if err := enqueueLink(ctx, l, depth+1, tasks); err != nil {
+			if err := enqueueLink(ctx, l, depth, tasks); err != nil {
 				fmt.Printf("[ERROR] Failed to enqueue CSS link %s: %v\n", l, err)
 			}
 		}
@@ -365,10 +381,10 @@ func looksLikeHTML(resp *http.Response) bool {
 
 // --- HTML processing ---
 
-func processHTML(ctx context.Context, pageURL string, body []byte) ([]string, error) {
+func processHTML(ctx context.Context, pageURL string, body []byte) ([]string, []string, error) {
 	doc, err := html.Parse(bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// compute base href, if present
@@ -380,14 +396,14 @@ func processHTML(ctx context.Context, pageURL string, body []byte) ([]string, er
 	}
 
 	filterDocument(doc)
-	pageLinks := rewriteLinks(doc, currentBase, *baseURL)
+	assets, links := rewriteLinks(doc, currentBase, *baseURL)
 
 	outputFile := getOutputPath(pageURL, "text/html")
 	if err := saveHTML(outputFile, doc); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	fmt.Printf("[INFO] Saved page: %s -> %s\n", pageURL, outputFile)
-	return pageLinks, nil
+	return assets, links, nil
 }
 
 func findBaseHref(n *html.Node) string {
@@ -446,18 +462,51 @@ func filterDocument(n *html.Node) {
 	f(n)
 }
 
-func rewriteLinks(n *html.Node, currentURL, base string) []string {
-	var found []string
+func rewriteLinks(n *html.Node, currentURL, base string) ([]string, []string) {
+	var assets []string
+	var links []string
 	var f func(*html.Node)
 	f = func(node *html.Node) {
 		if node.Type == html.ElementNode {
 			for i, attr := range node.Attr {
 				switch strings.ToLower(attr.Key) {
-				case "href", "src":
+				case "href":
+					// href is usually a link, unless it's a <link> tag for CSS/icon
+					isAsset := false
+					if strings.EqualFold(node.Data, "link") {
+						// check rel
+						for _, a := range node.Attr {
+							if strings.EqualFold(a.Key, "rel") {
+								val := strings.ToLower(a.Val)
+								if strings.Contains(val, "stylesheet") || strings.Contains(val, "icon") {
+									isAsset = true
+								}
+								break
+							}
+						}
+					}
+
 					orig := attr.Val
 					abs, err := resolveURL(currentURL, orig)
 					if err == nil && sameHost(abs.String(), base) {
-						found = append(found, abs.String())
+						if isAsset {
+							assets = append(assets, abs.String())
+						} else {
+							links = append(links, abs.String())
+						}
+						if *rewriteURL && abs.RawQuery != "" {
+							abs = rewriteURLWithPolicy(abs)
+						}
+						fixPath(abs)
+						rel := toRelative(abs, base)
+						node.Attr[i].Val = rel
+					}
+				case "src":
+					// src is always an asset (img, script, source, etc)
+					orig := attr.Val
+					abs, err := resolveURL(currentURL, orig)
+					if err == nil && sameHost(abs.String(), base) {
+						assets = append(assets, abs.String())
 						if *rewriteURL && abs.RawQuery != "" {
 							abs = rewriteURLWithPolicy(abs)
 						}
@@ -466,36 +515,36 @@ func rewriteLinks(n *html.Node, currentURL, base string) []string {
 						node.Attr[i].Val = rel
 					}
 				case "style":
-					newStyle, links := processInlineStyle(attr.Val, currentURL, base)
+					newStyle, found := processInlineStyle(attr.Val, currentURL, base)
 					node.Attr[i].Val = newStyle
-					found = append(found, links...)
+					assets = append(assets, found...)
 				case "srcset":
-					newSrc, links := processSrcSet(attr.Val, currentURL, base)
+					newSrc, found := processSrcSet(attr.Val, currentURL, base)
 					node.Attr[i].Val = newSrc
-					found = append(found, links...)
+					assets = append(assets, found...)
 				}
 			}
 
 			// <style>...</style>
 			if strings.EqualFold(node.Data, "style") {
 				css := getTextContent(node)
-				newCSS, links := processInlineCSS(css, currentURL, base)
+				newCSS, found := processInlineCSS(css, currentURL, base)
 				replaceTextContent(node, newCSS)
-				found = append(found, links...)
+				assets = append(assets, found...)
 			}
 
 			// <source srcset> in <picture>, <video>/<audio> sources
 			if strings.EqualFold(node.Data, "source") {
 				for i, a := range node.Attr {
 					if strings.EqualFold(a.Key, "srcset") {
-						newSrc, links := processSrcSet(a.Val, currentURL, base)
+						newSrc, found := processSrcSet(a.Val, currentURL, base)
 						node.Attr[i].Val = newSrc
-						found = append(found, links...)
+						assets = append(assets, found...)
 					}
 					if strings.EqualFold(a.Key, "src") {
 						abs, err := resolveURL(currentURL, a.Val)
 						if err == nil && sameHost(abs.String(), base) {
-							found = append(found, abs.String())
+							assets = append(assets, abs.String())
 							if *rewriteURL && abs.RawQuery != "" {
 								abs = rewriteURLWithPolicy(abs)
 							}
@@ -511,7 +560,7 @@ func rewriteLinks(n *html.Node, currentURL, base string) []string {
 		}
 	}
 	f(n)
-	return found
+	return assets, links
 }
 
 // --- Attribute processors ---
@@ -578,6 +627,9 @@ func processInlineStyle(style, currentURL, base string) (string, []string) {
 }
 
 func processInlineCSS(css, currentURL, base string) (string, []string) {
+	if reCSSURL == nil {
+		fmt.Println("DEBUG: reCSSURL is nil in processInlineCSS!")
+	}
 	found := []string{}
 	out := reCSSURL.ReplaceAllStringFunc(css, func(m string) string {
 		urls := reCSSURL.FindStringSubmatch(m)
@@ -701,7 +753,7 @@ func toRelative(abs *url.URL, base string) string {
 	// If safe filenames are enabled, use EscapedPath to ensure links in HTML match the files on disk
 	// and to prevent html.Render from normalizing UTF-8 characters to NFD.
 	var pathStr string
-	if *safeFilenames {
+	if safeFilenames != nil && *safeFilenames {
 		// Force NFC for local links because getOutputPath saves files as NFC.
 		// We need the link in HTML (%C3%B3) to match the file on disk (ó).
 		// If we used abs.EscapedPath() directly, it might be NFD (%CC%81) if the source was NFD,
@@ -727,12 +779,11 @@ func getOutputPath(link string, contentType string) string {
 		return filepath.Join(*outputDir, "index.html")
 	}
 
-	var pathPart string
-	if *safeFilenames {
-		// Use decoded path (UTF-8) for file system, so web servers can find it when decoding URL
-		pathPart = norm.NFC.String(u.Path)
-	} else {
-		pathPart = norm.NFC.String(u.Path)
+	// Start with NFC-normalized path
+	pathPart := norm.NFC.String(u.Path)
+
+	// Apply transliteration if not using safe filenames
+	if safeFilenames == nil || !*safeFilenames {
 		if cleaned, err2 := removeDiacritics(pathPart); err2 == nil {
 			pathPart = cleaned
 		}
@@ -764,29 +815,22 @@ func getOutputPath(link string, contentType string) string {
 	}
 
 	// Query baking
-	if *rewriteURL && u.RawQuery != "" {
+	if rewriteURL != nil && *rewriteURL && u.RawQuery != "" {
 		if isStaticAssetExt(filepath.Ext(pathPart)) {
 			u = rewriteAssetURL(u)
 		} else {
 			u = rewritePageURL(u)
 		}
-		// Always use Path (decoded) for filesystem, regardless of safeFilenames
-		// safeFilenames only affects how links are written in HTML (via toRelative)
 		pathPart = u.Path
-	}
-
-	final := filepath.Join(*outputDir, pathPart)
-
-	if !*safeFilenames {
-		final = norm.NFC.String(final)
-		if cleaned, err2 := removeDiacritics(final); err2 == nil {
-			final = cleaned
+		// Re-apply transliteration after query baking if needed
+		if safeFilenames == nil || !*safeFilenames {
+			if cleaned, err2 := removeDiacritics(pathPart); err2 == nil {
+				pathPart = cleaned
+			}
 		}
-	} else {
-		// In safe mode, ensure NFC normalization for the full path
-		final = norm.NFC.String(final)
 	}
-	return final
+
+	return filepath.Join(*outputDir, pathPart)
 }
 
 func extForContentType(ct string) (string, bool) {
