@@ -34,6 +34,7 @@ import (
 var (
 	concurrency int
 	queueSize   int
+	maxDepth    int
 
 	baseURL       *string
 	outputDir     *string
@@ -55,6 +56,12 @@ var (
 
 	tasksWg sync.WaitGroup
 )
+
+// task represents a URL to crawl with its depth
+type task struct {
+	url   string
+	depth int
+}
 
 // Unwanted tags to strip (mostly WP-specific)
 type unwantedTag struct {
@@ -84,6 +91,7 @@ func main() {
 	timeoutSec = flag.Int("timeout", 20, "HTTP timeout in seconds")
 	flag.IntVar(&queueSize, "queue", 10000, "Task queue size")
 	flag.IntVar(&concurrency, "concurrency", runtime.NumCPU(), "Number of workers")
+	flag.IntVar(&maxDepth, "max-depth", 0, "Maximum crawl depth (0 = unlimited, 1 = current page only, 2 = current + links, etc.)")
 	safeFilenames = flag.Bool("safe-filenames", false, "Use percent-encoded filenames (safer) instead of ASCII transliteration")
 	flag.Parse()
 
@@ -98,9 +106,12 @@ func main() {
 	defer cancel()
 
 	fmt.Printf("Starting download for %s, workers: %d\n", *baseURL, concurrency)
-	tasks := make(chan string, queueSize)
+	if maxDepth > 0 {
+		fmt.Printf("Max depth: %d\n", maxDepth)
+	}
+	tasks := make(chan task, queueSize)
 
-	if err := enqueueLink(ctx, *baseURL, tasks); err != nil {
+	if err := enqueueLink(ctx, *baseURL, 0, tasks); err != nil {
 		fmt.Println("enqueue error:", err)
 		os.Exit(1)
 	}
@@ -122,14 +133,14 @@ func main() {
 				select {
 				case <-ctx.Done():
 					return
-				case link, ok := <-tasks:
+				case t, ok := <-tasks:
 					if !ok {
 						return
 					}
 					func() {
 						defer tasksWg.Done()
-						if err := processURL(ctx, link, tasks); err != nil {
-							fmt.Printf("[ERROR] %s: %v\n", link, err)
+						if err := processURL(ctx, t.url, t.depth, tasks); err != nil {
+							fmt.Printf("[ERROR] %s: %v\n", t.url, err)
 							if processError.Load() == nil {
 								processError.Store(err)
 								cancel()
@@ -176,7 +187,12 @@ func normalize(u *url.URL) *url.URL {
 	return u
 }
 
-func enqueueLink(ctx context.Context, link string, tasks chan<- string) error {
+func enqueueLink(ctx context.Context, link string, depth int, tasks chan<- task) error {
+	// Check max depth (0 = unlimited, 1 = current page only, etc.)
+	if maxDepth > 0 && depth >= maxDepth {
+		return nil // Skip URLs at or beyond max depth
+	}
+
 	u, err := url.Parse(link)
 	if err != nil {
 		return fmt.Errorf("failed to parse URL %s: %w", link, err)
@@ -201,7 +217,7 @@ func enqueueLink(ctx context.Context, link string, tasks chan<- string) error {
 	case <-ctx.Done():
 		tasksWg.Done()
 		return ctx.Err()
-	case tasks <- link:
+	case tasks <- task{url: link, depth: depth}:
 		return nil
 	}
 }
@@ -234,7 +250,7 @@ func headOrGet(ctx context.Context, u string) (*http.Response, error) {
 
 // --- Routing based on Content-Type ---
 
-func processURL(ctx context.Context, link string, tasks chan<- string) error {
+func processURL(ctx context.Context, link string, depth int, tasks chan<- task) error {
 	resp, err := headOrGet(ctx, link)
 	if err != nil {
 		return err
@@ -268,7 +284,7 @@ func processURL(ctx context.Context, link string, tasks chan<- string) error {
 			return err
 		}
 		for _, l := range links {
-			if err := enqueueLink(ctx, l, tasks); err != nil {
+			if err := enqueueLink(ctx, l, depth+1, tasks); err != nil {
 				fmt.Printf("[ERROR] Failed to enqueue link %s: %v\n", l, err)
 			}
 		}
@@ -282,7 +298,7 @@ func processURL(ctx context.Context, link string, tasks chan<- string) error {
 		css := string(b)
 		newCSS, found := processCSSFile(css, link, *baseURL)
 		for _, l := range found {
-			if err := enqueueLink(ctx, l, tasks); err != nil {
+			if err := enqueueLink(ctx, l, depth+1, tasks); err != nil {
 				fmt.Printf("[ERROR] Failed to enqueue CSS link %s: %v\n", l, err)
 			}
 		}
