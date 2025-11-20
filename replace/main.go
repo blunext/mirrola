@@ -30,6 +30,8 @@ var rules = ReplaceList{
 
 	{"/home/olamundo/domains/olamundo.pl/public_html", "/var/www/html"},
 	{`\\/home\\/olamundo\\/domains\\/olamundo.pl\\/public_html`, `\/var\/www\/html`},
+	// Database name (from production to local docker-compose setup)
+	{"olamundo_wp1", "wordpress"},
 }
 
 // applyRules iterates through the list of rules and replaces occurrences of oldText with newText.
