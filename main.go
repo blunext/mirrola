@@ -234,18 +234,62 @@ func doRequest(ctx context.Context, method, u string) (*http.Response, error) {
 }
 
 func headOrGet(ctx context.Context, u string) (*http.Response, error) {
-	// Try HEAD first to check content type and availability
-	resp, err := doRequest(ctx, http.MethodHead, u)
-	if err != nil || resp.StatusCode >= 400 {
-		// HEAD failed, try GET directly
-		if resp != nil {
-			resp.Body.Close()
+	// Helper to try HEAD then GET
+	try := func(targetURL string) (*http.Response, error) {
+		// Try HEAD first
+		resp, err := doRequest(ctx, http.MethodHead, targetURL)
+		if err != nil || resp.StatusCode >= 400 {
+			// HEAD failed or error status, try GET directly
+			if resp != nil {
+				resp.Body.Close()
+			}
+			return doRequest(ctx, http.MethodGet, targetURL)
 		}
-		return doRequest(ctx, http.MethodGet, u)
+		// HEAD succeeded, close it and do GET to get the body
+		resp.Body.Close()
+		return doRequest(ctx, http.MethodGet, targetURL)
 	}
-	// HEAD succeeded, close it and do GET to get the body
-	resp.Body.Close()
-	return doRequest(ctx, http.MethodGet, u)
+
+	resp, err := try(u)
+
+	// If 404, try switching normalization (NFC <-> NFD)
+	if err == nil && resp.StatusCode == 404 {
+		resp.Body.Close() // Close the 404 response
+
+		parsed, parseErr := url.Parse(u)
+		if parseErr == nil {
+			path := parsed.Path
+			var altPath string
+
+			// Check if we can flip normalization
+			if norm.NFC.IsNormalString(path) {
+				altPath = norm.NFD.String(path)
+			} else {
+				altPath = norm.NFC.String(path)
+			}
+
+			if altPath != path {
+				parsed.Path = altPath
+				parsed.RawPath = "" // Force re-encoding
+				altURL := parsed.String()
+
+				// fmt.Printf("[INFO] 404 for %s, trying fallback: %s\n", u, altURL)
+				resp2, err2 := try(altURL)
+				if err2 == nil && resp2.StatusCode < 400 {
+					return resp2, nil // Found it!
+				}
+				if resp2 != nil {
+					resp2.Body.Close()
+				}
+			}
+		}
+		// If fallback failed, return the original 404 response (we need to re-request it or just return error?
+		// Actually, we closed the body. Let's just return a new error or re-request.
+		// Re-requesting is safer to return a valid response object.
+		return try(u)
+	}
+
+	return resp, err
 }
 
 // --- Routing based on Content-Type ---
@@ -853,16 +897,14 @@ func fixPath(u *url.URL) {
 		}
 	}
 
-	if *safeFilenames {
-		// In safe mode, do NOT force NFC here. The server might require NFD (e.g. WordPress).
-		// We will handle NFC normalization only when saving to disk (getOutputPath)
-		// and writing local links (toRelative).
-		// u.Path = norm.NFC.String(path) <--- REMOVED
-	} else {
-		if cleaned, _ := removeDiacritics(path); cleaned != "" {
-			u.Path = norm.NFC.String(cleaned)
-		}
-	}
+	// IMPORTANT: Do NOT modify u.Path here!
+	// The URL path should match what's on the server when we fetch it.
+	// Transliteration (removing diacritics) should only happen in getOutputPath
+	// when saving to the local filesystem.
+
+	// Also do NOT force NFC here. Some servers (e.g. macOS based or with specific config)
+	// might require NFD. We will handle fallback in headOrGet if needed.
+	// u.Path = norm.NFC.String(path)
 	u.RawPath = ""
 }
 
