@@ -58,11 +58,9 @@ var (
 )
 
 func init() {
-	fmt.Println("DEBUG: init() called")
 	reCSSURL = regexp.MustCompile(`url\(\s*['"]?\s*([^'\")]+?)\s*['"]?\s*\)`) // url('...')
 	reJSAbsURL = regexp.MustCompile(`(https?://[^\s"']+)`)                    // https://...
 	unicodeEsc = regexp.MustCompile(`\\u[0-9A-Fa-f]{4}`)
-	fmt.Printf("DEBUG: reCSSURL initialized: %v\n", reCSSURL)
 }
 
 // task represents a URL to crawl with its depth
@@ -367,7 +365,7 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 	default:
 		// binary or other asset
 		out := getOutputPath(link, ct)
-		return streamToFile(out, resp.Body)
+		return writeFile(out, resp.Body)
 	}
 }
 
@@ -533,6 +531,24 @@ func rewriteLinks(n *html.Node, currentURL, base string) ([]string, []string) {
 				assets = append(assets, found...)
 			}
 
+			// <script>...</script> - only process Simple Lightbox scripts
+			if strings.EqualFold(node.Data, "script") {
+				var scriptID string
+				for _, a := range node.Attr {
+					if strings.EqualFold(a.Key, "id") {
+						scriptID = a.Val
+						break
+					}
+				}
+				// Only process specific Simple Lightbox scripts to avoid breaking other JS
+				if scriptID == "slb_footer" || scriptID == "slb_context" {
+					jsContent := getTextContent(node)
+					newJS, found := processInlineJS(jsContent, currentURL, base)
+					replaceTextContent(node, newJS)
+					assets = append(assets, found...)
+				}
+			}
+
 			// <source srcset> in <picture>, <video>/<audio> sources
 			if strings.EqualFold(node.Data, "source") {
 				for i, a := range node.Attr {
@@ -627,9 +643,6 @@ func processInlineStyle(style, currentURL, base string) (string, []string) {
 }
 
 func processInlineCSS(css, currentURL, base string) (string, []string) {
-	if reCSSURL == nil {
-		fmt.Println("DEBUG: reCSSURL is nil in processInlineCSS!")
-	}
 	found := []string{}
 	out := reCSSURL.ReplaceAllStringFunc(css, func(m string) string {
 		urls := reCSSURL.FindStringSubmatch(m)
@@ -657,9 +670,11 @@ func processInlineCSS(css, currentURL, base string) (string, []string) {
 	return out, found
 }
 
-// Optional: generic inline JS URL rewriter (kept conservative)
+// processInlineJS processes inline JavaScript for Simple Lightbox plugin
+// It finds HTTP(S) URLs, rewrites them to relative paths, and collects assets
 func processInlineJS(jsContent, currentURL, base string) (string, []string) {
 	var found []string
+	// Unescape \/ to / and decode unicode escapes like \u0026
 	unescaped := strings.ReplaceAll(jsContent, `\/`, `/`)
 	unescaped = decodeUnicodeEscapes(unescaped)
 	newJS := reJSAbsURL.ReplaceAllStringFunc(unescaped, func(match string) string {
@@ -674,6 +689,7 @@ func processInlineJS(jsContent, currentURL, base string) (string, []string) {
 			}
 			fixPath(abs)
 			rel := toRelative(abs, base)
+			// Re-escape slashes for JS strings
 			return strings.ReplaceAll(rel, "/", `\/`)
 		}
 		return match
@@ -763,12 +779,10 @@ func toRelative(abs *url.URL, base string) string {
 		pathStr = abs.Path
 	}
 
-	return pathStr + func() string {
-		if abs.RawQuery != "" {
-			return "?" + abs.RawQuery
-		}
-		return ""
-	}()
+	if abs.RawQuery != "" {
+		return pathStr + "?" + abs.RawQuery
+	}
+	return pathStr
 }
 
 // --- Asset I/O ---
@@ -815,7 +829,7 @@ func getOutputPath(link string, contentType string) string {
 	}
 
 	// Query baking
-	if rewriteURL != nil && *rewriteURL && u.RawQuery != "" {
+	if *rewriteURL && u.RawQuery != "" {
 		if isStaticAssetExt(filepath.Ext(pathPart)) {
 			u = rewriteAssetURL(u)
 		} else {
@@ -879,8 +893,6 @@ func writeFile(path string, r io.Reader) error {
 	return os.Rename(tmp, path)
 }
 
-func streamToFile(path string, r io.Reader) error { return writeFile(path, r) }
-
 func saveHTML(outputFile string, doc *html.Node) error {
 	var buf bytes.Buffer
 	if err := html.Render(&buf, doc); err != nil {
@@ -891,15 +903,14 @@ func saveHTML(outputFile string, doc *html.Node) error {
 
 // --- Path cleanup ---
 
+var staticAssetExts = map[string]bool{
+	".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true,
+	".svg": true, ".ico": true, ".css": true, ".js": true,
+	".woff": true, ".woff2": true, ".ttf": true, ".eot": true, ".otf": true, ".pdf": true,
+}
+
 func isStaticAssetExt(ext string) bool {
-	ext = strings.ToLower(ext)
-	staticExts := []string{".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico", ".css", ".js", ".woff", ".woff2", ".ttf", ".eot", ".otf", ".pdf"}
-	for _, e := range staticExts {
-		if ext == e {
-			return true
-		}
-	}
-	return false
+	return staticAssetExts[strings.ToLower(ext)]
 }
 
 func removeDiacritics(s string) (string, error) {
@@ -923,32 +934,7 @@ func removeDiacritics(s string) (string, error) {
 }
 
 func fixPath(u *url.URL) {
-	// Ensure path is fully decoded
-	path := u.Path
-	if strings.Contains(path, "%") {
-		if unescaped, err := url.PathUnescape(path); err == nil {
-			path = unescaped
-		}
-	}
-
-	// Also check EscapedPath just in case u.Path was not fully representative
-	if unescaped, err := url.PathUnescape(u.EscapedPath()); err == nil {
-		// Prefer the one that is more decoded?
-		// Actually, just use the one that seems to have worked best.
-		// But let's stick to the logic: decode -> remove diacritics -> encode back (via u.Path assignment)
-		if len(unescaped) < len(path) || (len(unescaped) == len(path) && unescaped != path) {
-			path = unescaped
-		}
-	}
-
-	// IMPORTANT: Do NOT modify u.Path here!
-	// The URL path should match what's on the server when we fetch it.
-	// Transliteration (removing diacritics) should only happen in getOutputPath
-	// when saving to the local filesystem.
-
-	// Also do NOT force NFC here. Some servers (e.g. macOS based or with specific config)
-	// might require NFD. We will handle fallback in headOrGet if needed.
-	// u.Path = norm.NFC.String(path)
+	// Clear RawPath to force re-encoding based on Path
 	u.RawPath = ""
 }
 
@@ -1076,7 +1062,7 @@ func replaceTextContent(n *html.Node, newText string) {
 
 func decodeUnicodeEscapes(s string) string {
 	return unicodeEsc.ReplaceAllStringFunc(s, func(m string) string {
-		hexVal := m[2:]
+		hexVal := m[2:] // Skip \u prefix
 		r, err := strconv.ParseInt(hexVal, 16, 32)
 		if err != nil {
 			return m
