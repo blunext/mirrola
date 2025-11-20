@@ -8,6 +8,44 @@ import (
 	"golang.org/x/net/html"
 )
 
+// TestRemoveDiacritics tests Polish character transliteration
+func TestRemoveDiacritics(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "Lowercase Polish characters",
+			input:    "ąćęłńóśźż",
+			expected: "acelnoszz",
+		},
+		{
+			name:     "Uppercase Polish characters",
+			input:    "ĄĆĘŁŃÓŚŹŻ",
+			expected: "ACELNOSZZ",
+		},
+		{
+			name:     "Mixed with path",
+			input:    "zdjęcia/łódź.jpg",
+			expected: "zdjecia/lodz.jpg",
+		},
+		{
+			name:     "Combined with other diacritics",
+			input:    "café-łódź",
+			expected: "cafe-lodz",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := removeDiacritics(tt.input)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 // Helper function to initialize rewriteURL and restore it after the test
 func withRewriteURL(t *testing.T, value bool, testFunc func()) {
 	// Backup the original rewriteURL value
@@ -363,6 +401,32 @@ func TestModifyLinks(t *testing.T) {
 					</style></head><body><p>Hello World!</p></body></html>`,
 			expectedAssets: []string{
 				"https://example.com/images/bg.css.png",
+			},
+			expectedLinks: []string{},
+		},
+		{
+			name: "Script tag processing - Simple Lightbox",
+			htmlInput: `<html>
+				<head><title>Test Page</title></head>
+				<body>
+					<script id="slb_footer">
+						var img = "https:\/\/example.com\/images\/photo.jpg";
+					</script>
+					<script id="other">
+						var ignored = "https:\/\/example.com\/images\/ignored.jpg";
+					</script>
+				</body>
+			</html>`,
+			currentURL: "https://example.com/page",
+			baseURL:    "https://example.com",
+			rewriteUrl: false,
+			expectedHTML: `<html><head><title>Test Page</title></head><body><script id="slb_footer">
+						var img = "\/images\/photo.jpg";
+					</script><script id="other">
+						var ignored = "https:\/\/example.com\/images\/ignored.jpg";
+					</script></body></html>`,
+			expectedAssets: []string{
+				"https://example.com/images/photo.jpg",
 			},
 			expectedLinks: []string{},
 		},
