@@ -27,6 +27,7 @@ import (
 	"golang.org/x/text/runes"
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
+	"golang.org/x/time/rate"
 )
 
 // --- Config & globals ---
@@ -36,14 +37,16 @@ var (
 	queueSize   int
 	maxDepth    int
 
-	baseURL       *string
-	outputDir     *string
-	rewriteURL    *bool
-	safeFilenames *bool
-	userAgent     *string
-	timeoutSec    *int
+	baseURL           *string
+	outputDir         *string
+	rewriteURL        *bool
+	safeFilenames     *bool
+	userAgent         *string
+	timeoutSec        *int
+	requestsPerSecond *uint
 
-	client *http.Client
+	client  *http.Client
+	limiter *rate.Limiter
 
 	visited = struct {
 		sync.Mutex
@@ -95,6 +98,7 @@ func main() {
 	rewriteURL = flag.Bool("rewrite", false, "Bake query params into filenames")
 	userAgent = flag.String("ua", "StaticCrawler/1.0", "HTTP User-Agent")
 	timeoutSec = flag.Int("timeout", 20, "HTTP timeout in seconds")
+	requestsPerSecond = flag.Uint("rate", 0, "Max requests per second (0 = unlimited)")
 	flag.IntVar(&queueSize, "queue", 10000, "Task queue size")
 	flag.IntVar(&concurrency, "concurrency", runtime.NumCPU(), "Number of workers")
 	flag.IntVar(&maxDepth, "max-depth", 0, "Maximum crawl depth (0 = unlimited, 1 = current page only, 2 = current + links, etc.)")
@@ -108,12 +112,20 @@ func main() {
 
 	client = &http.Client{Timeout: time.Duration(*timeoutSec) * time.Second, Transport: &http.Transport{MaxIdleConns: 64, MaxIdleConnsPerHost: 8, IdleConnTimeout: 30 * time.Second}}
 
+	// Initialize rate limiter if rate limiting is enabled
+	if *requestsPerSecond > 0 {
+		limiter = rate.NewLimiter(rate.Limit(float64(*requestsPerSecond)), 1)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	fmt.Printf("Starting download for %s, workers: %d\n", *baseURL, concurrency)
 	if maxDepth > 0 {
 		fmt.Printf("Max depth: %d\n", maxDepth)
+	}
+	if *requestsPerSecond > 0 {
+		fmt.Printf("Rate limit: %d requests/second\n", *requestsPerSecond)
 	}
 	tasks := make(chan task, queueSize)
 
@@ -231,6 +243,13 @@ func enqueueLink(ctx context.Context, link string, depth int, tasks chan<- task)
 // --- HTTP helpers ---
 
 func doRequest(ctx context.Context, method, u string) (*http.Response, error) {
+	// Wait for rate limiter if enabled
+	if limiter != nil {
+		if err := limiter.Wait(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	req, err := http.NewRequestWithContext(ctx, method, u, nil)
 	if err != nil {
 		return nil, err
