@@ -447,6 +447,7 @@ func filterDocument(n *html.Node) {
 	var f func(*html.Node)
 	f = func(node *html.Node) {
 		if node.Type == html.ElementNode {
+			// Remove unwanted tags (links with specific rel attributes)
 			for _, unwanted := range unwantedTags {
 				if strings.EqualFold(node.Data, unwanted.Tag) {
 					match := true
@@ -469,6 +470,14 @@ func filterDocument(n *html.Node) {
 					}
 				}
 			}
+
+			// Remove unwanted scripts
+			if strings.EqualFold(node.Data, "script") && shouldRemoveScript(node) {
+				if node.Parent != nil {
+					node.Parent.RemoveChild(node)
+					return
+				}
+			}
 		}
 		for c := node.FirstChild; c != nil; {
 			next := c.NextSibling
@@ -477,6 +486,30 @@ func filterDocument(n *html.Node) {
 		}
 	}
 	f(n)
+}
+
+// shouldRemoveScript checks if a script node should be removed
+// Returns true for Cloudflare challenge scripts and comment-reply scripts
+func shouldRemoveScript(node *html.Node) bool {
+	// Check for comment-reply.min.js in src attribute
+	for _, attr := range node.Attr {
+		if strings.EqualFold(attr.Key, "src") && strings.Contains(attr.Val, "comment-reply.min.js") {
+			return true
+		}
+	}
+
+	// Check for Cloudflare challenge script in inline content
+	// Cloudflare scripts typically contain: cdn-cgi/challenge-platform or __CF$cv$params
+	if node.FirstChild != nil && node.FirstChild.Type == html.TextNode {
+		content := node.FirstChild.Data
+		if strings.Contains(content, "cdn-cgi/challenge-platform") ||
+			strings.Contains(content, "__CF$cv$params") ||
+			strings.Contains(content, "window.__CF$cv$params") {
+			return true
+		}
+	}
+
+	return false
 }
 
 func rewriteLinks(n *html.Node, currentURL, base string) ([]string, []string) {
