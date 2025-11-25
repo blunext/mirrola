@@ -100,6 +100,15 @@ func filterDocument(n *html.Node) {
 				}
 			}
 		}
+
+		// Remove all HTML comments (including CDATA sections)
+		if node.Type == html.CommentNode {
+			if node.Parent != nil {
+				node.Parent.RemoveChild(node)
+				return
+			}
+		}
+
 		for c := node.FirstChild; c != nil; {
 			next := c.NextSibling
 			f(c)
@@ -300,6 +309,9 @@ func processSpecialElements(node *html.Node, currentURL, base string) []string {
 // processStyleElement handles <style>...</style> elements
 func processStyleElement(node *html.Node, currentURL, base string) []string {
 	css := getTextContent(node)
+	// Remove CSS comments (/* ... */) and CDATA markers
+	css = removeCSSComments(css)
+	css = removeCDATAMarkers(css)
 	newCSS, found := processInlineCSS(css, currentURL, base)
 	replaceTextContent(node, newCSS)
 	return found
@@ -317,6 +329,8 @@ func processScriptElement(node *html.Node, currentURL, base string) []string {
 	// Only process specific Simple Lightbox scripts to avoid breaking other JS
 	if scriptID == "slb_footer" || scriptID == "slb_context" {
 		jsContent := getTextContent(node)
+		// Remove CDATA markers from JavaScript
+		jsContent = removeCDATAMarkers(jsContent)
 		newJS, found := processInlineJS(jsContent, currentURL, base)
 		replaceTextContent(node, newJS)
 		return found
