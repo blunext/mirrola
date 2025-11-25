@@ -18,64 +18,92 @@ import (
 
 // --- Asset I/O ---
 
+// getOutputPath generates the local filesystem path for a given URL
 func getOutputPath(link string, contentType string) string {
 	u, err := url.Parse(link)
 	if err != nil {
 		return filepath.Join(*outputDir, "index.html")
 	}
 
+	// Normalize path and apply transliteration if needed
+	pathPart := normalizePath(u.Path)
+
+	// Add extension if missing based on content type
+	pathPart = addMissingExtension(pathPart, contentType)
+
+	// Bake query parameters into filename if enabled
+	if *rewriteURL && u.RawQuery != "" {
+		pathPart = applyQueryBaking(u, pathPart)
+	}
+
+	return filepath.Join(*outputDir, pathPart)
+}
+
+// normalizePath applies NFC normalization and optionally transliterates diacritics
+func normalizePath(urlPath string) string {
 	// Start with NFC-normalized path
-	pathPart := norm.NFC.String(u.Path)
+	pathPart := norm.NFC.String(urlPath)
 
 	// Apply transliteration if not using safe filenames
 	if safeFilenames == nil || !*safeFilenames {
-		if cleaned, err2 := removeDiacritics(pathPart); err2 == nil {
+		if cleaned, err := removeDiacritics(pathPart); err == nil {
 			pathPart = cleaned
 		}
 	}
 
+	return pathPart
+}
+
+// addMissingExtension adds appropriate file extension based on content type if missing
+func addMissingExtension(pathPart, contentType string) string {
+	// Handle root/empty paths
 	if pathPart == "" || pathPart == "/" {
-		pathPart = "/index.html"
+		return "/index.html"
+	}
+
+	ext := filepath.Ext(pathPart)
+	if ext != "" {
+		return pathPart // Extension already present
+	}
+
+	// Add extension based on content-type
+	switch contentType {
+	case "text/html", "application/xhtml+xml":
+		if strings.HasSuffix(pathPart, "/") {
+			return pathPart + "index.html"
+		}
+		return pathPart + "/index.html"
+	case "text/css":
+		return pathPart + ".css"
+	case "application/javascript", "text/javascript":
+		return pathPart + ".js"
+	default:
+		if ext2, _ := extForContentType(contentType); ext2 != "" {
+			return pathPart + ext2
+		}
+	}
+
+	return pathPart
+}
+
+// applyQueryBaking bakes query parameters into the filename
+func applyQueryBaking(u *url.URL, pathPart string) string {
+	// Rewrite URL to bake query params
+	if isStaticAssetExt(filepath.Ext(pathPart)) {
+		u = rewriteAssetURL(u)
 	} else {
-		ext := filepath.Ext(pathPart)
-		if ext == "" {
-			// Decide based on content-type
-			switch contentType {
-			case "text/html", "application/xhtml+xml":
-				if strings.HasSuffix(pathPart, "/") {
-					pathPart += "index.html"
-				} else {
-					pathPart = pathPart + "/index.html"
-				}
-			case "text/css":
-				pathPart += ".css"
-			case "application/javascript", "text/javascript":
-				pathPart += ".js"
-			default:
-				if ext2, _ := extForContentType(contentType); ext2 != "" {
-					pathPart += ext2
-				}
-			}
+		u = rewritePageURL(u)
+	}
+	pathPart = u.Path
+
+	// Re-apply transliteration after query baking if needed
+	if safeFilenames == nil || !*safeFilenames {
+		if cleaned, err := removeDiacritics(pathPart); err == nil {
+			pathPart = cleaned
 		}
 	}
 
-	// Query baking
-	if *rewriteURL && u.RawQuery != "" {
-		if isStaticAssetExt(filepath.Ext(pathPart)) {
-			u = rewriteAssetURL(u)
-		} else {
-			u = rewritePageURL(u)
-		}
-		pathPart = u.Path
-		// Re-apply transliteration after query baking if needed
-		if safeFilenames == nil || !*safeFilenames {
-			if cleaned, err2 := removeDiacritics(pathPart); err2 == nil {
-				pathPart = cleaned
-			}
-		}
-	}
-
-	return filepath.Join(*outputDir, pathPart)
+	return pathPart
 }
 
 func extForContentType(ct string) (string, bool) {
