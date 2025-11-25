@@ -558,110 +558,14 @@ func rewriteLinks(n *html.Node, currentURL, base string) ([]string, []string) {
 	var f func(*html.Node)
 	f = func(node *html.Node) {
 		if node.Type == html.ElementNode {
-			for i, attr := range node.Attr {
-				switch strings.ToLower(attr.Key) {
-				case "href":
-					// href is usually a link, unless it's a <link> tag for CSS/icon
-					isAsset := false
-					if strings.EqualFold(node.Data, "link") {
-						// check rel
-						for _, a := range node.Attr {
-							if strings.EqualFold(a.Key, "rel") {
-								val := strings.ToLower(a.Val)
-								if strings.Contains(val, "stylesheet") || strings.Contains(val, "icon") {
-									isAsset = true
-								}
-								break
-							}
-						}
-					}
+			// Process attributes
+			nodeAssets, nodeLinks := processNodeAttributes(node, currentURL, base)
+			assets = append(assets, nodeAssets...)
+			links = append(links, nodeLinks...)
 
-					orig := attr.Val
-					abs, err := resolveURL(currentURL, orig)
-					if err == nil && sameHost(abs.String(), base) {
-						if isAsset {
-							assets = append(assets, abs.String())
-						} else {
-							links = append(links, abs.String())
-						}
-						if *rewriteURL && abs.RawQuery != "" {
-							abs = rewriteURLWithPolicy(abs)
-						}
-						fixPath(abs)
-						rel := toRelative(abs, base)
-						node.Attr[i].Val = rel
-					}
-				case "src":
-					// src is always an asset (img, script, source, etc)
-					orig := attr.Val
-					abs, err := resolveURL(currentURL, orig)
-					if err == nil && sameHost(abs.String(), base) {
-						assets = append(assets, abs.String())
-						if *rewriteURL && abs.RawQuery != "" {
-							abs = rewriteURLWithPolicy(abs)
-						}
-						fixPath(abs)
-						rel := toRelative(abs, base)
-						node.Attr[i].Val = rel
-					}
-				case "style":
-					newStyle, found := processInlineStyle(attr.Val, currentURL, base)
-					node.Attr[i].Val = newStyle
-					assets = append(assets, found...)
-				case "srcset":
-					newSrc, found := processSrcSet(attr.Val, currentURL, base)
-					node.Attr[i].Val = newSrc
-					assets = append(assets, found...)
-				}
-			}
-
-			// <style>...</style>
-			if strings.EqualFold(node.Data, "style") {
-				css := getTextContent(node)
-				newCSS, found := processInlineCSS(css, currentURL, base)
-				replaceTextContent(node, newCSS)
-				assets = append(assets, found...)
-			}
-
-			// <script>...</script> - only process Simple Lightbox scripts
-			if strings.EqualFold(node.Data, "script") {
-				var scriptID string
-				for _, a := range node.Attr {
-					if strings.EqualFold(a.Key, "id") {
-						scriptID = a.Val
-						break
-					}
-				}
-				// Only process specific Simple Lightbox scripts to avoid breaking other JS
-				if scriptID == "slb_footer" || scriptID == "slb_context" {
-					jsContent := getTextContent(node)
-					newJS, found := processInlineJS(jsContent, currentURL, base)
-					replaceTextContent(node, newJS)
-					assets = append(assets, found...)
-				}
-			}
-
-			// <source srcset> in <picture>, <video>/<audio> sources
-			if strings.EqualFold(node.Data, "source") {
-				for i, a := range node.Attr {
-					if strings.EqualFold(a.Key, "srcset") {
-						newSrc, found := processSrcSet(a.Val, currentURL, base)
-						node.Attr[i].Val = newSrc
-						assets = append(assets, found...)
-					}
-					if strings.EqualFold(a.Key, "src") {
-						abs, err := resolveURL(currentURL, a.Val)
-						if err == nil && sameHost(abs.String(), base) {
-							assets = append(assets, abs.String())
-							if *rewriteURL && abs.RawQuery != "" {
-								abs = rewriteURLWithPolicy(abs)
-							}
-							fixPath(abs)
-							node.Attr[i].Val = toRelative(abs, base)
-						}
-					}
-				}
-			}
+			// Process special elements
+			specialAssets := processSpecialElements(node, currentURL, base)
+			assets = append(assets, specialAssets...)
 		}
 		for c := node.FirstChild; c != nil; c = c.NextSibling {
 			f(c)
@@ -669,6 +573,168 @@ func rewriteLinks(n *html.Node, currentURL, base string) ([]string, []string) {
 	}
 	f(n)
 	return assets, links
+}
+
+// processNodeAttributes handles all attributes (href, src, style, srcset) for a node
+func processNodeAttributes(node *html.Node, currentURL, base string) ([]string, []string) {
+	var assets []string
+	var links []string
+
+	for i := range node.Attr {
+		attr := &node.Attr[i]
+		switch strings.ToLower(attr.Key) {
+		case "href":
+			nodeAssets, nodeLinks := processHrefAttribute(node, attr, currentURL, base)
+			assets = append(assets, nodeAssets...)
+			links = append(links, nodeLinks...)
+		case "src":
+			nodeAssets := processSrcAttribute(attr, currentURL, base)
+			assets = append(assets, nodeAssets...)
+		case "style":
+			nodeAssets := processStyleAttribute(attr, currentURL, base)
+			assets = append(assets, nodeAssets...)
+		case "srcset":
+			nodeAssets := processSrcsetAttribute(attr, currentURL, base)
+			assets = append(assets, nodeAssets...)
+		}
+	}
+	return assets, links
+}
+
+// processHrefAttribute handles href attributes (links or assets depending on element type)
+func processHrefAttribute(node *html.Node, attr *html.Attribute, currentURL, base string) ([]string, []string) {
+	var assets []string
+	var links []string
+
+	// href is usually a link, unless it's a <link> tag for CSS/icon
+	isAsset := false
+	if strings.EqualFold(node.Data, "link") {
+		// check rel
+		for _, a := range node.Attr {
+			if strings.EqualFold(a.Key, "rel") {
+				val := strings.ToLower(a.Val)
+				if strings.Contains(val, "stylesheet") || strings.Contains(val, "icon") {
+					isAsset = true
+				}
+				break
+			}
+		}
+	}
+
+	orig := attr.Val
+	abs, err := resolveURL(currentURL, orig)
+	if err == nil && sameHost(abs.String(), base) {
+		if isAsset {
+			assets = append(assets, abs.String())
+		} else {
+			links = append(links, abs.String())
+		}
+		if *rewriteURL && abs.RawQuery != "" {
+			abs = rewriteURLWithPolicy(abs)
+		}
+		fixPath(abs)
+		attr.Val = toRelative(abs, base)
+	}
+	return assets, links
+}
+
+// processSrcAttribute handles src attributes (always assets)
+func processSrcAttribute(attr *html.Attribute, currentURL, base string) []string {
+	var assets []string
+
+	orig := attr.Val
+	abs, err := resolveURL(currentURL, orig)
+	if err == nil && sameHost(abs.String(), base) {
+		assets = append(assets, abs.String())
+		if *rewriteURL && abs.RawQuery != "" {
+			abs = rewriteURLWithPolicy(abs)
+		}
+		fixPath(abs)
+		attr.Val = toRelative(abs, base)
+	}
+	return assets
+}
+
+// processStyleAttribute handles inline style attributes
+func processStyleAttribute(attr *html.Attribute, currentURL, base string) []string {
+	newStyle, found := processInlineStyle(attr.Val, currentURL, base)
+	attr.Val = newStyle
+	return found
+}
+
+// processSrcsetAttribute handles srcset attributes
+func processSrcsetAttribute(attr *html.Attribute, currentURL, base string) []string {
+	newSrc, found := processSrcSet(attr.Val, currentURL, base)
+	attr.Val = newSrc
+	return found
+}
+
+// processSpecialElements handles <style>, <script>, and <source> elements
+func processSpecialElements(node *html.Node, currentURL, base string) []string {
+	var assets []string
+
+	switch strings.ToLower(node.Data) {
+	case "style":
+		assets = append(assets, processStyleElement(node, currentURL, base)...)
+	case "script":
+		assets = append(assets, processScriptElement(node, currentURL, base)...)
+	case "source":
+		assets = append(assets, processSourceElement(node, currentURL, base)...)
+	}
+	return assets
+}
+
+// processStyleElement handles <style>...</style> elements
+func processStyleElement(node *html.Node, currentURL, base string) []string {
+	css := getTextContent(node)
+	newCSS, found := processInlineCSS(css, currentURL, base)
+	replaceTextContent(node, newCSS)
+	return found
+}
+
+// processScriptElement handles <script>...</script> elements (only Simple Lightbox scripts)
+func processScriptElement(node *html.Node, currentURL, base string) []string {
+	var scriptID string
+	for _, a := range node.Attr {
+		if strings.EqualFold(a.Key, "id") {
+			scriptID = a.Val
+			break
+		}
+	}
+	// Only process specific Simple Lightbox scripts to avoid breaking other JS
+	if scriptID == "slb_footer" || scriptID == "slb_context" {
+		jsContent := getTextContent(node)
+		newJS, found := processInlineJS(jsContent, currentURL, base)
+		replaceTextContent(node, newJS)
+		return found
+	}
+	return nil
+}
+
+// processSourceElement handles <source> elements in <picture>, <video>/<audio>
+func processSourceElement(node *html.Node, currentURL, base string) []string {
+	var assets []string
+
+	for i := range node.Attr {
+		attr := &node.Attr[i]
+		if strings.EqualFold(attr.Key, "srcset") {
+			newSrc, found := processSrcSet(attr.Val, currentURL, base)
+			attr.Val = newSrc
+			assets = append(assets, found...)
+		}
+		if strings.EqualFold(attr.Key, "src") {
+			abs, err := resolveURL(currentURL, attr.Val)
+			if err == nil && sameHost(abs.String(), base) {
+				assets = append(assets, abs.String())
+				if *rewriteURL && abs.RawQuery != "" {
+					abs = rewriteURLWithPolicy(abs)
+				}
+				fixPath(abs)
+				attr.Val = toRelative(abs, base)
+			}
+		}
+	}
+	return assets
 }
 
 // --- Attribute processors ---
