@@ -121,10 +121,13 @@ func filterDocument(n *html.Node) {
 // shouldRemoveScript checks if a script node should be removed
 // Returns true for Cloudflare challenge scripts, comment-reply scripts, and WordPress emoji handler
 func shouldRemoveScript(node *html.Node) bool {
-	// Check for comment-reply.min.js in src attribute
+	// Check for unwanted scripts in src attribute
 	for _, attr := range node.Attr {
-		if strings.EqualFold(attr.Key, "src") && strings.Contains(attr.Val, "comment-reply.min.js") {
-			return true
+		if strings.EqualFold(attr.Key, "src") {
+			if strings.Contains(attr.Val, "comment-reply.min.js") ||
+				strings.Contains(attr.Val, "wp-emoji-release.min.js") {
+				return true
+			}
 		}
 	}
 

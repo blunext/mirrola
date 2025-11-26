@@ -33,6 +33,10 @@ func normalize(u *url.URL) *url.URL {
 		if strings.HasPrefix(u.Path, "/") && !strings.HasPrefix(cleaned, "/") {
 			cleaned = "/" + cleaned
 		}
+		// Preserve trailing slash (path.Clean removes it)
+		if strings.HasSuffix(u.Path, "/") && !strings.HasSuffix(cleaned, "/") {
+			cleaned += "/"
+		}
 		u.Path = cleaned
 	}
 
