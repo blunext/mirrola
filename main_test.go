@@ -143,13 +143,17 @@ func TestProcessInlineCSS(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Initialize rewriteURL for the test case
-			withRewriteURL(t, tt.rewriteUrl, func() {
-				modifiedCSS, found := processInlineCSS(tt.css, tt.currentURL, tt.baseURL)
+			// Create Config for this test case
+			cfg := &Config{
+				BaseURL:    tt.baseURL,
+				RewriteURL: tt.rewriteUrl,
+			}
+			cfg.InitRegexps()
 
-				assert.Equal(t, tt.expectedCSS, modifiedCSS, "CSS should be modified correctly")
-				assert.ElementsMatch(t, tt.foundLinks, found, "Found links should match expected links")
-			})
+			modifiedCSS, found := cfg.ProcessInlineCSS(tt.css, tt.currentURL, tt.baseURL)
+
+			assert.Equal(t, tt.expectedCSS, modifiedCSS, "CSS should be modified correctly")
+			assert.ElementsMatch(t, tt.foundLinks, found, "Found links should match expected links")
 		})
 	}
 }
@@ -228,13 +232,17 @@ func TestProcessInlineStyle(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Initialize rewriteURL for the test case
-			withRewriteURL(t, tt.rewriteUrl, func() {
-				modifiedStyle, found := processInlineStyle(tt.style, tt.currentURL, tt.baseURL)
+			// Create Config for this test case
+			cfg := &Config{
+				BaseURL:    tt.baseURL,
+				RewriteURL: tt.rewriteUrl,
+			}
+			cfg.InitRegexps()
 
-				assert.Equal(t, tt.expected, modifiedStyle, "Style should be modified correctly")
-				assert.ElementsMatch(t, tt.foundLinks, found, "Found links should match expected links")
-			})
+			modifiedStyle, found := cfg.ProcessInlineStyle(tt.style, tt.currentURL, tt.baseURL)
+
+			assert.Equal(t, tt.expected, modifiedStyle, "Style should be modified correctly")
+			assert.ElementsMatch(t, tt.foundLinks, found, "Found links should match expected links")
 		})
 	}
 }

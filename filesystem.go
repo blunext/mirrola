@@ -106,6 +106,64 @@ func applyQueryBaking(u *url.URL, pathPart string) string {
 	return pathPart
 }
 
+// --- Config methods (for incremental refactoring) ---
+
+// GetOutputPath generates the local filesystem path for a given URL (Config-based)
+func (c *Config) GetOutputPath(link string, contentType string) string {
+	u, err := url.Parse(link)
+	if err != nil {
+		return filepath.Join(c.OutputDir, "index.html")
+	}
+
+	// Normalize path and apply transliteration if needed
+	pathPart := c.normalizePath(u.Path)
+
+	// Add extension if missing based on content type
+	pathPart = addMissingExtension(pathPart, contentType)
+
+	// Bake query parameters into filename if enabled
+	if c.RewriteURL && u.RawQuery != "" {
+		pathPart = c.applyQueryBaking(u, pathPart)
+	}
+
+	return filepath.Join(c.OutputDir, pathPart)
+}
+
+// normalizePath applies NFC normalization and optionally transliterates diacritics (Config-based)
+func (c *Config) normalizePath(urlPath string) string {
+	// Start with NFC-normalized path
+	pathPart := norm.NFC.String(urlPath)
+
+	// Apply transliteration if not using safe filenames
+	if !c.SafeFilenames {
+		if cleaned, err := removeDiacritics(pathPart); err == nil {
+			pathPart = cleaned
+		}
+	}
+
+	return pathPart
+}
+
+// applyQueryBaking bakes query parameters into the filename (Config-based)
+func (c *Config) applyQueryBaking(u *url.URL, pathPart string) string {
+	// Rewrite URL to bake query params
+	if isStaticAssetExt(filepath.Ext(pathPart)) {
+		u = rewriteAssetURL(u)
+	} else {
+		u = rewritePageURL(u)
+	}
+	pathPart = u.Path
+
+	// Re-apply transliteration after query baking if needed
+	if !c.SafeFilenames {
+		if cleaned, err := removeDiacritics(pathPart); err == nil {
+			pathPart = cleaned
+		}
+	}
+
+	return pathPart
+}
+
 func extForContentType(ct string) (string, bool) {
 	switch ct {
 	case "image/jpeg":

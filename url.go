@@ -213,3 +213,48 @@ func rewritePageURLWithSuffix(u *url.URL, suffix string) *url.URL {
 	u.RawQuery = ""
 	return u
 }
+
+// --- Config methods (for incremental refactoring) ---
+
+// ToRelative converts an absolute URL to a relative path for use in static HTML (Config-based)
+func (c *Config) ToRelative(abs *url.URL, base string) string {
+	b, err := url.Parse(base)
+	if err != nil {
+		return abs.String()
+	}
+	if !strings.EqualFold(abs.Host, b.Host) {
+		return abs.String() // Keep external URLs absolute
+	}
+
+	var pathStr string
+	if c.SafeFilenames {
+		// Force NFC normalization to match GetOutputPath behavior
+		pathStr = (&url.URL{Path: norm.NFC.String(abs.Path)}).EscapedPath()
+	} else {
+		pathStr = abs.Path
+	}
+
+	if abs.RawQuery != "" {
+		return pathStr + "?" + abs.RawQuery
+	}
+	return pathStr
+}
+
+// RewriteURLWithPolicy decides how to bake query parameters into filenames (Config-based)
+func (c *Config) RewriteURLWithPolicy(u *url.URL) *url.URL {
+	if len(u.RawQuery) > 80 {
+		// Hash long queries to avoid filesystem path length limits
+		sum := sha1.Sum([]byte(u.RawQuery))
+		sfx := hex.EncodeToString(sum[:8]) // 16-char hex
+		if filepath.Ext(u.Path) == "" {
+			return rewritePageURLWithSuffix(u, "q_"+sfx)
+		}
+		return rewriteAssetURLWithSuffix(u, "q_"+sfx)
+	}
+
+	// Short queries get human-readable filenames
+	if filepath.Ext(u.Path) == "" {
+		return rewritePageURL(u)
+	}
+	return rewriteAssetURL(u)
+}
