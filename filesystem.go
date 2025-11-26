@@ -70,6 +70,10 @@ func (c *Config) GetOutputPath(link string, contentType string) string {
 		pathPart = c.applyQueryBaking(u, pathPart)
 	}
 
+	// Ensure path is relative to OutputDir (prevent path traversal)
+	pathPart = strings.TrimLeft(pathPart, "/")
+
+	// fmt.Printf("[DEBUG] GetOutputPath: link=%s, OutputDir=%s, pathPart=%s\n", link, c.OutputDir, pathPart)
 	return filepath.Join(c.OutputDir, pathPart)
 }
 
@@ -78,8 +82,11 @@ func (c *Config) normalizePath(urlPath string) string {
 	// Start with NFC-normalized path
 	pathPart := norm.NFC.String(urlPath)
 
-	// Apply transliteration if not using safe filenames
-	if !c.SafeFilenames {
+	if c.SafeFilenames {
+		// Use percent-encoding for safe filenames
+		pathPart = (&url.URL{Path: pathPart}).EscapedPath()
+	} else {
+		// Apply transliteration if not using safe filenames
 		if cleaned, err := removeDiacritics(pathPart); err == nil {
 			pathPart = cleaned
 		}
@@ -98,8 +105,12 @@ func (c *Config) applyQueryBaking(u *url.URL, pathPart string) string {
 	}
 	pathPart = u.Path
 
-	// Re-apply transliteration after query baking if needed
-	if !c.SafeFilenames {
+	// Re-apply normalization after query baking to match original mode
+	if c.SafeFilenames {
+		// Use percent-encoding for safe filenames
+		pathPart = (&url.URL{Path: pathPart}).EscapedPath()
+	} else {
+		// Re-apply transliteration if needed
 		if cleaned, err := removeDiacritics(pathPart); err == nil {
 			pathPart = cleaned
 		}

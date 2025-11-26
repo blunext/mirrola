@@ -25,7 +25,7 @@ func TestConfig_GetOutputPath(t *testing.T) {
 			},
 			url:         "https://example.com/zdjęcia/łódź.jpg",
 			contentType: "image/jpeg",
-			expected:    "/tmp/zdjęcia/łódź.jpg",
+			expected:    "/tmp/zdj%C4%99cia/%C5%82%C3%B3d%C5%BA.jpg",
 		},
 		{
 			name: "Transliteration mode with Polish characters",
@@ -168,7 +168,7 @@ func TestConfig_GetOutputPath(t *testing.T) {
 			},
 			url:         "https://example.com/zdjęcie.jpg?v=1",
 			contentType: "image/jpeg",
-			expected:    "/tmp/zdjęcie_v_1.jpg",
+			expected:    "/tmp/zdj%C4%99cie_v_1.jpg",
 		},
 		{
 			name: "URL without scheme - treated as path",
@@ -227,7 +227,7 @@ func TestConfig_NormalizePath(t *testing.T) {
 				SafeFilenames: true,
 			},
 			urlPath:  "/zdjęcia/łódź",
-			expected: "/zdjęcia/łódź",
+			expected: "/zdj%C4%99cia/%C5%82%C3%B3d%C5%BA",
 		},
 		{
 			name: "Transliteration mode - Polish lowercase",
