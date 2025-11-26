@@ -249,6 +249,10 @@ func TestProcessInlineStyle(t *testing.T) {
 
 // TestModifyLinks tests the modifyLinks function using table-driven tests.
 func TestModifyLinks(t *testing.T) {
+	// Initialize global regexps for old-style tests
+	// TODO: Migrate this test to use Config
+	initRegexps()
+
 	tests := []struct {
 		name           string
 		htmlInput      string
