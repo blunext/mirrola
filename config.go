@@ -44,6 +44,9 @@ var (
 
 	// WaitGroup for tracking active tasks
 	tasksWg sync.WaitGroup
+
+	// Global Config instance (initialized in main)
+	cfg *Config
 )
 
 // task represents a URL to crawl with its depth level

@@ -48,6 +48,16 @@ func TestRemoveDiacritics(t *testing.T) {
 
 // Helper function to initialize rewriteURL and restore it after the test
 func withRewriteURL(t *testing.T, value bool, testFunc func()) {
+	// Initialize cfg if nil (needed for Config methods)
+	if cfg == nil {
+		cfg = &Config{
+			BaseURL: "https://example.com",
+		}
+		cfg.InitRegexps()
+	}
+	// Sync cfg.RewriteURL with the test value
+	cfg.RewriteURL = value
+
 	// Backup the original rewriteURL value
 	var originalRewriteURL bool
 	if rewriteURL != nil {

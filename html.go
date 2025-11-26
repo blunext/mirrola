@@ -28,7 +28,7 @@ func processHTML(ctx context.Context, pageURL string, body []byte) ([]string, []
 	filterDocument(doc)
 	assets, links := rewriteLinks(doc, currentBase, *baseURL)
 
-	outputFile := getOutputPath(pageURL, "text/html")
+	outputFile := cfg.GetOutputPath(pageURL, "text/html")
 	if err := saveHTML(outputFile, doc); err != nil {
 		return nil, nil, err
 	}
@@ -245,17 +245,17 @@ func processHrefAttribute(node *html.Node, attr *html.Attribute, currentURL, bas
 
 	orig := attr.Val
 	abs, err := resolveURL(currentURL, orig)
-	if err == nil && sameHost(abs.String(), base) {
+	if err == nil && cfg.SameHost(abs.String(), base) {
 		if isAsset {
 			assets = append(assets, abs.String())
 		} else {
 			links = append(links, abs.String())
 		}
 		if *rewriteURL && abs.RawQuery != "" {
-			abs = rewriteURLWithPolicy(abs)
+			abs = cfg.RewriteURLWithPolicy(abs)
 		}
 		fixPath(abs)
-		attr.Val = toRelative(abs, base)
+		attr.Val = cfg.ToRelative(abs, base)
 	}
 	return assets, links
 }
@@ -266,27 +266,27 @@ func processSrcAttribute(attr *html.Attribute, currentURL, base string) []string
 
 	orig := attr.Val
 	abs, err := resolveURL(currentURL, orig)
-	if err == nil && sameHost(abs.String(), base) {
+	if err == nil && cfg.SameHost(abs.String(), base) {
 		assets = append(assets, abs.String())
 		if *rewriteURL && abs.RawQuery != "" {
-			abs = rewriteURLWithPolicy(abs)
+			abs = cfg.RewriteURLWithPolicy(abs)
 		}
 		fixPath(abs)
-		attr.Val = toRelative(abs, base)
+		attr.Val = cfg.ToRelative(abs, base)
 	}
 	return assets
 }
 
 // processStyleAttribute handles inline style attributes
 func processStyleAttribute(attr *html.Attribute, currentURL, base string) []string {
-	newStyle, found := processInlineStyle(attr.Val, currentURL, base)
+	newStyle, found := cfg.ProcessInlineStyle(attr.Val, currentURL, base)
 	attr.Val = newStyle
 	return found
 }
 
 // processSrcsetAttribute handles srcset attributes
 func processSrcsetAttribute(attr *html.Attribute, currentURL, base string) []string {
-	newSrc, found := processSrcSet(attr.Val, currentURL, base)
+	newSrc, found := cfg.ProcessSrcSet(attr.Val, currentURL, base)
 	attr.Val = newSrc
 	return found
 }
@@ -312,7 +312,7 @@ func processStyleElement(node *html.Node, currentURL, base string) []string {
 	// Remove CSS comments (/* ... */) and CDATA markers
 	css = removeCSSComments(css)
 	css = removeCDATAMarkers(css)
-	newCSS, found := processInlineCSS(css, currentURL, base)
+	newCSS, found := cfg.ProcessInlineCSS(css, currentURL, base)
 	replaceTextContent(node, newCSS)
 	return found
 }
@@ -331,7 +331,7 @@ func processScriptElement(node *html.Node, currentURL, base string) []string {
 		jsContent := getTextContent(node)
 		// Remove CDATA markers from JavaScript
 		jsContent = removeCDATAMarkers(jsContent)
-		newJS, found := processInlineJS(jsContent, currentURL, base)
+		newJS, found := cfg.ProcessInlineJS(jsContent, currentURL, base)
 		replaceTextContent(node, newJS)
 		return found
 	}
@@ -345,19 +345,19 @@ func processSourceElement(node *html.Node, currentURL, base string) []string {
 	for i := range node.Attr {
 		attr := &node.Attr[i]
 		if strings.EqualFold(attr.Key, "srcset") {
-			newSrc, found := processSrcSet(attr.Val, currentURL, base)
+			newSrc, found := cfg.ProcessSrcSet(attr.Val, currentURL, base)
 			attr.Val = newSrc
 			assets = append(assets, found...)
 		}
 		if strings.EqualFold(attr.Key, "src") {
 			abs, err := resolveURL(currentURL, attr.Val)
-			if err == nil && sameHost(abs.String(), base) {
+			if err == nil && cfg.SameHost(abs.String(), base) {
 				assets = append(assets, abs.String())
 				if *rewriteURL && abs.RawQuery != "" {
-					abs = rewriteURLWithPolicy(abs)
+					abs = cfg.RewriteURLWithPolicy(abs)
 				}
 				fixPath(abs)
-				attr.Val = toRelative(abs, base)
+				attr.Val = cfg.ToRelative(abs, base)
 			}
 		}
 	}

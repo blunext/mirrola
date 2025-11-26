@@ -139,7 +139,7 @@ func TestConfig_RewriteURLWithPolicy(t *testing.T) {
 			name:        "Short query on JS asset - readable baking",
 			config:      Config{},
 			rawURL:      "https://example.com/app.js?version=3.0&build=release",
-			expectPath:  "/app_version_3.0_build_release.js",
+			expectPath:  "/app_build_release_version_3.0.js", // keys sorted alphabetically: build, version
 			expectQuery: "",
 		},
 		{

@@ -106,18 +106,18 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 			return err
 		}
 		css := string(b)
-		newCSS, found := processCSSFile(css, link, *baseURL)
+		newCSS, found := cfg.ProcessCSSFile(css, link, *baseURL)
 		// CSS assets also inherit current depth
 		for _, l := range found {
 			if err := enqueueLink(ctx, l, depth, tasks); err != nil {
 				fmt.Printf("[ERROR] Failed to enqueue CSS link %s: %v\n", l, err)
 			}
 		}
-		out := getOutputPath(link, ct)
+		out := cfg.GetOutputPath(link, ct)
 		return writeFile(out, strings.NewReader(newCSS))
 	default:
 		// binary or other asset
-		out := getOutputPath(link, ct)
+		out := cfg.GetOutputPath(link, ct)
 		return writeFile(out, resp.Body)
 	}
 }

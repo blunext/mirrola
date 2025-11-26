@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"golang.org/x/text/unicode/norm"
@@ -40,17 +41,6 @@ func normalize(u *url.URL) *url.URL {
 }
 
 // sameHost checks if two URLs belong to the same host (case-insensitive)
-func sameHost(link, base string) bool {
-	u, err := url.Parse(link)
-	if err != nil {
-		return false
-	}
-	b, err := url.Parse(base)
-	if err != nil {
-		return false
-	}
-	return strings.EqualFold(u.Host, b.Host)
-}
 
 // resolveURL converts a relative or absolute link to an absolute URL
 // based on the current page URL, and unifies the scheme for same-host links
@@ -75,30 +65,6 @@ func resolveURL(currentURL, link string) (*url.URL, error) {
 // toRelative converts an absolute URL to a relative path for use in static HTML.
 // Handles Unicode normalization (NFC) when safe filenames are enabled to ensure
 // links match the actual files on disk across different filesystems.
-func toRelative(abs *url.URL, base string) string {
-	b, err := url.Parse(base)
-	if err != nil {
-		return abs.String()
-	}
-	if !strings.EqualFold(abs.Host, b.Host) {
-		return abs.String() // Keep external URLs absolute
-	}
-
-	var pathStr string
-	if safeFilenames != nil && *safeFilenames {
-		// Force NFC normalization to match getOutputPath behavior
-		// This prevents mismatches on filesystems that don't normalize (Linux/Windows)
-		// Mac uses NFD, so %C3%B3 (NFC ó) vs %CC%81 (NFD combining acute) would differ
-		pathStr = (&url.URL{Path: norm.NFC.String(abs.Path)}).EscapedPath()
-	} else {
-		pathStr = abs.Path
-	}
-
-	if abs.RawQuery != "" {
-		return pathStr + "?" + abs.RawQuery
-	}
-	return pathStr
-}
 
 // fixPath clears RawPath to force URL encoding based on Path field
 func fixPath(u *url.URL) {
@@ -110,23 +76,6 @@ func fixPath(u *url.URL) {
 // rewriteURLWithPolicy decides how to bake query parameters into filenames.
 // For long queries (>80 chars), uses SHA1 hash. For short queries, uses readable format.
 // Distinguishes between pages (no extension) and assets (with extension).
-func rewriteURLWithPolicy(u *url.URL) *url.URL {
-	if len(u.RawQuery) > 80 {
-		// Hash long queries to avoid filesystem path length limits
-		sum := sha1.Sum([]byte(u.RawQuery))
-		sfx := hex.EncodeToString(sum[:8]) // 16-char hex
-		if filepath.Ext(u.Path) == "" {
-			return rewritePageURLWithSuffix(u, "q_"+sfx)
-		}
-		return rewriteAssetURLWithSuffix(u, "q_"+sfx)
-	}
-
-	// Short queries get human-readable filenames
-	if filepath.Ext(u.Path) == "" {
-		return rewritePageURL(u)
-	}
-	return rewriteAssetURL(u)
-}
 
 // sanitizeQueryPart replaces special chars in query params for safe filenames
 func sanitizeQueryPart(s string) string {
@@ -147,8 +96,17 @@ func querySuffix(u *url.URL) string {
 	if len(q) == 0 {
 		return ""
 	}
+
+	// Sort keys for deterministic output
+	keys := make([]string, 0, len(q))
+	for k := range q {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
 	parts := make([]string, 0, len(q))
-	for k, vals := range q {
+	for _, k := range keys {
+		vals := q[k]
 		for _, v := range vals {
 			parts = append(parts, sanitizeQueryPart(k)+"_"+sanitizeQueryPart(v))
 		}
@@ -257,4 +215,17 @@ func (c *Config) RewriteURLWithPolicy(u *url.URL) *url.URL {
 		return rewritePageURL(u)
 	}
 	return rewriteAssetURL(u)
+}
+
+// SameHost checks if two URLs have the same host (case-insensitive)
+func (c *Config) SameHost(u1, u2 string) bool {
+	u, err := url.Parse(u1)
+	if err != nil {
+		return false
+	}
+	b, err := url.Parse(u2)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Host, b.Host)
 }

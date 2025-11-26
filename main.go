@@ -31,6 +31,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize global Config from flags
+	cfg = NewConfigFromGlobals()
+
 	initRegexps()
 	initHTTPClient()
 
