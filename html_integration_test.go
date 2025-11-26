@@ -24,11 +24,6 @@ func TestHTMLProcessing_CompleteFlow(t *testing.T) {
 	cfg.InitRegexps()
 
 	// Ensure global variables are set (legacy support if needed, though we migrated most)
-	outputDir = &tempDir
-	rewriteURL = &cfg.RewriteURL
-	safeFilenames = &cfg.SafeFilenames
-	baseURLStr := "https://example.com"
-	baseURL = &baseURLStr
 
 	// Sample HTML content
 	htmlContent := `
@@ -96,7 +91,6 @@ func TestHTMLProcessing_WordPressCleanup(t *testing.T) {
 	cfg.InitRegexps()
 
 	// Ensure global variables are set
-	outputDir = &tempDir
 
 	// HTML with WordPress junk
 	htmlContent := `

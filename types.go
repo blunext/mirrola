@@ -39,14 +39,14 @@ func (c *Config) InitRegexps() {
 	c.UnicodeEsc = regexp.MustCompile(`\\u[0-9A-Fa-f]{4}`)                     // \uXXXX escapes
 }
 
-// NewConfigFromGlobals creates a Config instance from global command-line flags.
+// NewConfigFromGlobals creates a Config instance from command-line flag values.
 // This allows gradual migration from globals to Config-based approach.
-func NewConfigFromGlobals() *Config {
+func NewConfigFromGlobals(baseURL, outputDir string, rewriteURL, safeFilenames bool) *Config {
 	cfg := &Config{
-		BaseURL:           *baseURL,
-		OutputDir:         *outputDir,
-		RewriteURL:        *rewriteURL,
-		SafeFilenames:     *safeFilenames,
+		BaseURL:           baseURL,
+		OutputDir:         outputDir,
+		RewriteURL:        rewriteURL,
+		SafeFilenames:     safeFilenames,
 		UserAgent:         *userAgent,
 		Timeout:           time.Duration(*timeoutSec) * time.Second,
 		RequestsPerSecond: *requestsPerSecond,

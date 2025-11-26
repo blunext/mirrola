@@ -26,7 +26,7 @@ func processHTML(ctx context.Context, pageURL string, body []byte) ([]string, []
 	}
 
 	filterDocument(doc)
-	assets, links := rewriteLinks(doc, currentBase, *baseURL)
+	assets, links := rewriteLinks(doc, currentBase, cfg.BaseURL)
 
 	outputFile := cfg.GetOutputPath(pageURL, "text/html")
 	if err := saveHTML(outputFile, doc); err != nil {
@@ -254,7 +254,7 @@ func processHrefAttribute(node *html.Node, attr *html.Attribute, currentURL, bas
 		} else {
 			links = append(links, abs.String())
 		}
-		if *rewriteURL && abs.RawQuery != "" {
+		if cfg.RewriteURL && abs.RawQuery != "" {
 			abs = cfg.RewriteURLWithPolicy(abs)
 		}
 		fixPath(abs)
@@ -271,7 +271,7 @@ func processSrcAttribute(attr *html.Attribute, currentURL, base string) []string
 	abs, err := resolveURL(currentURL, orig)
 	if err == nil && cfg.SameHost(abs.String(), base) {
 		assets = append(assets, abs.String())
-		if *rewriteURL && abs.RawQuery != "" {
+		if cfg.RewriteURL && abs.RawQuery != "" {
 			abs = cfg.RewriteURLWithPolicy(abs)
 		}
 		fixPath(abs)
@@ -356,7 +356,7 @@ func processSourceElement(node *html.Node, currentURL, base string) []string {
 			abs, err := resolveURL(currentURL, attr.Val)
 			if err == nil && cfg.SameHost(abs.String(), base) {
 				assets = append(assets, abs.String())
-				if *rewriteURL && abs.RawQuery != "" {
+				if cfg.RewriteURL && abs.RawQuery != "" {
 					abs = cfg.RewriteURLWithPolicy(abs)
 				}
 				fixPath(abs)

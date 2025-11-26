@@ -106,7 +106,7 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 			return err
 		}
 		css := string(b)
-		newCSS, found := cfg.ProcessCSSFile(css, link, *baseURL)
+		newCSS, found := cfg.ProcessCSSFile(css, link, cfg.BaseURL)
 		// CSS assets also inherit current depth
 		for _, l := range found {
 			if err := enqueueLink(ctx, l, depth, tasks); err != nil {

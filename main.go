@@ -13,17 +13,17 @@ import (
 // Mirrola - Static website crawler that downloads and rewrites pages for offline viewing.
 // Supports concurrent workers, depth limits, rate limiting, and proper Unicode handling.
 func main() {
-	// Flags
-	baseURL = flag.String("url", "", "Base URL to start crawling (required)")
-	outputDir = flag.String("dir", "./static", "Output directory")
-	rewriteURL = flag.Bool("rewrite", false, "Bake query params into filenames")
+	// Parse command-line flags
+	baseURL := flag.String("url", "", "Base URL to start crawling (required)")
+	outputDir := flag.String("dir", "./static", "Output directory")
+	rewriteURL := flag.Bool("rewrite", false, "Bake query params into filenames")
+	safeFilenames := flag.Bool("safe-filenames", false, "Use percent-encoded filenames (safer) instead of ASCII transliteration")
 	userAgent = flag.String("ua", "StaticCrawler/1.0", "HTTP User-Agent")
 	timeoutSec = flag.Int("timeout", 20, "HTTP timeout in seconds")
 	requestsPerSecond = flag.Uint("rate", 0, "Max requests per second (0 = unlimited)")
 	flag.IntVar(&queueSize, "queue", 10000, "Task queue size")
 	flag.IntVar(&concurrency, "concurrency", runtime.NumCPU(), "Number of workers")
 	flag.IntVar(&maxDepth, "max-depth", 0, "Maximum crawl depth (0 = unlimited, 1 = current page only, 2 = current + links, etc.)")
-	safeFilenames = flag.Bool("safe-filenames", false, "Use percent-encoded filenames (safer) instead of ASCII transliteration")
 	flag.Parse()
 
 	if *baseURL == "" {
@@ -32,7 +32,7 @@ func main() {
 	}
 
 	// Initialize global Config from flags
-	cfg = NewConfigFromGlobals()
+	cfg = NewConfigFromGlobals(*baseURL, *outputDir, *rewriteURL, *safeFilenames)
 
 	initRegexps()
 	initHTTPClient()
@@ -40,7 +40,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	fmt.Printf("Starting download for %s, workers: %d\n", *baseURL, concurrency)
+	fmt.Printf("Starting download for %s, workers: %d\n", cfg.BaseURL, concurrency)
 	if maxDepth > 0 {
 		fmt.Printf("Max depth: %d\n", maxDepth)
 	}
@@ -49,7 +49,7 @@ func main() {
 	}
 	tasks := make(chan task, queueSize)
 
-	if err := enqueueLink(ctx, *baseURL, 0, tasks); err != nil {
+	if err := enqueueLink(ctx, cfg.BaseURL, 0, tasks); err != nil {
 		fmt.Println("enqueue error:", err)
 		os.Exit(1)
 	}

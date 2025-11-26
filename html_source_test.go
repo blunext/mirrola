@@ -20,11 +20,6 @@ func TestHTMLProcessing_SourceElements(t *testing.T) {
 	cfg.InitRegexps()
 
 	// Ensure global variables are set
-	outputDir = &tempDir
-	baseURLStr := "https://example.com"
-	baseURL = &baseURLStr
-	rewrite := false
-	rewriteURL = &rewrite
 
 	// HTML with <picture> and <source> elements
 	htmlContent := `
@@ -72,10 +67,6 @@ func TestHTMLProcessing_ImgSrcset(t *testing.T) {
 	}
 	cfg.InitRegexps()
 
-	outputDir = &tempDir
-	baseURLStr := "https://example.com"
-	baseURL = &baseURLStr
-
 	// HTML with img srcset
 	htmlContent := `
 <!DOCTYPE html>
@@ -106,10 +97,6 @@ func TestHTMLProcessing_AudioSource(t *testing.T) {
 		OutputDir: tempDir,
 	}
 	cfg.InitRegexps()
-
-	outputDir = &tempDir
-	baseURLStr := "https://example.com"
-	baseURL = &baseURLStr
 
 	htmlContent := `
 <html>

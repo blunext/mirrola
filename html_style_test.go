@@ -19,10 +19,6 @@ func TestHTMLProcessing_RemoveStyleEdgeCases(t *testing.T) {
 	}
 	cfg.InitRegexps()
 
-	outputDir = &tempDir
-	baseURLStr := "https://example.com"
-	baseURL = &baseURLStr
-
 	tests := []struct {
 		name         string
 		html         string

@@ -59,11 +59,6 @@ func TestCrawler_BasicFlow(t *testing.T) {
 
 	// Mock global variables
 	client = ts.Client()
-	outputDir = &tempDir
-	rewriteURL = &cfg.RewriteURL
-	safeFilenames = &cfg.SafeFilenames
-	baseURLStr := ts.URL
-	baseURL = &baseURLStr
 	ua := "MirrolaTest/1.0"
 	userAgent = &ua
 	maxDepth = 2

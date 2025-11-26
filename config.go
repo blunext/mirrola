@@ -18,11 +18,7 @@ var (
 	queueSize   int // task queue buffer size
 	maxDepth    int // maximum crawl depth (0 = unlimited)
 
-	// Command-line flags
-	baseURL           *string // starting URL to crawl
-	outputDir         *string // output directory for static files
-	rewriteURL        *bool   // whether to bake query params into filenames
-	safeFilenames     *bool   // use percent-encoding instead of transliteration
+	// Command-line flags (pointers set by flag.Parse)
 	userAgent         *string // HTTP User-Agent header
 	timeoutSec        *int    // HTTP request timeout
 	requestsPerSecond *uint   // rate limit (0 = unlimited)
