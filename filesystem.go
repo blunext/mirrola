@@ -73,12 +73,14 @@ func (c *Config) GetOutputPath(link string, contentType string) string {
 	// Ensure path is relative to OutputDir (prevent path traversal)
 	pathPart = strings.TrimLeft(pathPart, "/")
 
-	// fmt.Printf("[DEBUG] GetOutputPath: link=%s, OutputDir=%s, pathPart=%s\n", link, c.OutputDir, pathPart)
 	return filepath.Join(c.OutputDir, pathPart)
 }
 
 // normalizePath applies NFC normalization and optionally transliterates diacritics (Config-based)
 func (c *Config) normalizePath(urlPath string) string {
+	// Remove trailing ? (empty query marker) and other invalid filesystem chars
+	urlPath = strings.TrimSuffix(urlPath, "?")
+
 	// Start with NFC-normalized path
 	pathPart := norm.NFC.String(urlPath)
 

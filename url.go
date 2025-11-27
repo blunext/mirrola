@@ -40,7 +40,8 @@ func normalize(u *url.URL) *url.URL {
 		u.Path = cleaned
 	}
 
-	u.RawPath = "" // Clear to force proper re-encoding
+	u.RawPath = ""       // Clear to force proper re-encoding
+	u.ForceQuery = false // Remove trailing '?' if query is empty (e.g. font.eot? -> font.eot)
 	return u
 }
 
