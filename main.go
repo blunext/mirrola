@@ -20,7 +20,7 @@ func main() {
 	safeFilenames := flag.Bool("safe-filenames", false, "Use percent-encoded filenames (safer) instead of ASCII transliteration")
 	userAgent = flag.String("ua", "StaticCrawler/1.0", "HTTP User-Agent")
 	timeoutSec = flag.Int("timeout", 20, "HTTP timeout in seconds")
-	requestsPerSecond = flag.Uint("rate", 0, "Max requests per second (0 = unlimited)")
+	delayBetweenRequests = flag.Float64("delay", 0, "Delay in seconds between requests (0 = no delay, e.g., 5 = wait 5 seconds)")
 	flag.IntVar(&queueSize, "queue", 10000, "Task queue size")
 	flag.IntVar(&concurrency, "concurrency", runtime.NumCPU(), "Number of workers")
 	flag.IntVar(&maxDepth, "max-depth", 0, "Maximum crawl depth (0 = unlimited, 1 = current page only, 2 = current + links, etc.)")
@@ -44,8 +44,8 @@ func main() {
 	if maxDepth > 0 {
 		fmt.Printf("Max depth: %d\n", maxDepth)
 	}
-	if *requestsPerSecond > 0 {
-		fmt.Printf("Rate limit: %d requests/second\n", *requestsPerSecond)
+	if *delayBetweenRequests > 0 {
+		fmt.Printf("Delay between requests: %.2f seconds\n", *delayBetweenRequests)
 	}
 	tasks := make(chan task, queueSize)
 

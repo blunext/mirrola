@@ -42,8 +42,8 @@ func TestHTTP_EdgeCases(t *testing.T) {
 	userAgent = &ua
 	timeout := 1 // 1 second
 	timeoutSec = &timeout
-	reqPerSec := uint(0)
-	requestsPerSecond = &reqPerSec
+	delay := 0.0
+	delayBetweenRequests = &delay
 
 	initHTTPClient()
 	// Override client timeout for faster tests
@@ -113,8 +113,8 @@ func TestHTTP_UnicodeFallback(t *testing.T) {
 	userAgent = &ua
 	timeout := 1
 	timeoutSec = &timeout
-	reqPerSec := uint(0)
-	requestsPerSecond = &reqPerSec
+	delay := 0.0
+	delayBetweenRequests = &delay
 
 	initHTTPClient()
 	ctx := context.Background()

@@ -19,9 +19,9 @@ var (
 	maxDepth    int // maximum crawl depth (0 = unlimited)
 
 	// Command-line flags (pointers set by flag.Parse)
-	userAgent         *string // HTTP User-Agent header
-	timeoutSec        *int    // HTTP request timeout
-	requestsPerSecond *uint   // rate limit (0 = unlimited)
+	userAgent            *string  // HTTP User-Agent header
+	timeoutSec           *int     // HTTP request timeout
+	delayBetweenRequests *float64 // delay in seconds between requests (0 = no delay)
 
 	// HTTP infrastructure
 	client  *http.Client  // shared HTTP client
@@ -96,8 +96,10 @@ func initHTTPClient() {
 		},
 	}
 
-	// Initialize rate limiter if rate limiting is enabled
-	if *requestsPerSecond > 0 {
-		limiter = rate.NewLimiter(rate.Limit(float64(*requestsPerSecond)), 1)
+	// Initialize rate limiter if delay is enabled
+	if *delayBetweenRequests > 0 {
+		// Convert delay to rate: delay of 5 seconds = 0.2 requests/second
+		requestsPerSecond := 1.0 / *delayBetweenRequests
+		limiter = rate.NewLimiter(rate.Limit(requestsPerSecond), 1)
 	}
 }

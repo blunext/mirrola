@@ -17,9 +17,9 @@ type Config struct {
 	SafeFilenames bool
 
 	// HTTP settings
-	UserAgent         string
-	Timeout           time.Duration
-	RequestsPerSecond uint
+	UserAgent            string
+	Timeout              time.Duration
+	DelayBetweenRequests float64
 
 	// Worker pool settings
 	Concurrency int
@@ -43,16 +43,16 @@ func (c *Config) InitRegexps() {
 // This allows gradual migration from globals to Config-based approach.
 func NewConfigFromGlobals(baseURL, outputDir string, rewriteURL, safeFilenames bool) *Config {
 	cfg := &Config{
-		BaseURL:           baseURL,
-		OutputDir:         outputDir,
-		RewriteURL:        rewriteURL,
-		SafeFilenames:     safeFilenames,
-		UserAgent:         *userAgent,
-		Timeout:           time.Duration(*timeoutSec) * time.Second,
-		RequestsPerSecond: *requestsPerSecond,
-		Concurrency:       concurrency,
-		QueueSize:         queueSize,
-		MaxDepth:          maxDepth,
+		BaseURL:              baseURL,
+		OutputDir:            outputDir,
+		RewriteURL:           rewriteURL,
+		SafeFilenames:        safeFilenames,
+		UserAgent:            *userAgent,
+		Timeout:              time.Duration(*timeoutSec) * time.Second,
+		DelayBetweenRequests: *delayBetweenRequests,
+		Concurrency:          concurrency,
+		QueueSize:            queueSize,
+		MaxDepth:             maxDepth,
 	}
 	cfg.InitRegexps()
 	return cfg

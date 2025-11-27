@@ -13,15 +13,8 @@ import (
 
 // --- HTTP helpers ---
 
-// doRequest performs an HTTP request with rate limiting and custom User-Agent
+// doRequest performs an HTTP request with custom User-Agent
 func doRequest(ctx context.Context, method, u string) (*http.Response, error) {
-	// Wait for rate limiter if enabled
-	if limiter != nil {
-		if err := limiter.Wait(ctx); err != nil {
-			return nil, err
-		}
-	}
-
 	req, err := http.NewRequestWithContext(ctx, method, u, nil)
 	if err != nil {
 		return nil, err

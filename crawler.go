@@ -78,6 +78,13 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 
 	switch {
 	case isHTML:
+		// Apply rate limiting ONLY for HTML pages, not assets
+		if limiter != nil {
+			if err := limiter.Wait(ctx); err != nil {
+				return err
+			}
+		}
+
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return err
@@ -114,10 +121,18 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 			}
 		}
 		out := cfg.GetOutputPath(link, ct)
-		return writeFile(out, strings.NewReader(newCSS))
+		if err := writeFile(out, strings.NewReader(newCSS)); err != nil {
+			return err
+		}
+		fmt.Printf("[INFO] Saved CSS: %s -> %s\n", link, out)
+		return nil
 	default:
 		// binary or other asset
 		out := cfg.GetOutputPath(link, ct)
-		return writeFile(out, resp.Body)
+		if err := writeFile(out, resp.Body); err != nil {
+			return err
+		}
+		fmt.Printf("[INFO] Saved asset: %s -> %s\n", link, out)
+		return nil
 	}
 }
