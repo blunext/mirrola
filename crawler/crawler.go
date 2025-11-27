@@ -1,4 +1,4 @@
-package main
+package crawler
 
 import (
 	"context"
@@ -7,7 +7,100 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 )
+
+// --- Public API ---
+
+// Init initializes the crawler with the given configuration.
+// This function must be called before Run().
+func Init(baseURL, outputDir string, rewriteURL, safeFilenames bool, ua string, timeout int, delay float64, queue, workers, depth int) error {
+	// Store flag values in global pointers
+	userAgent = &ua
+	timeoutSec = &timeout
+	delayBetweenRequests = &delay
+
+	// Store worker pool settings
+	concurrency = workers
+	queueSize = queue
+	maxDepth = depth
+
+	// Initialize global Config from flags
+	cfg = NewConfigFromGlobals(baseURL, outputDir, rewriteURL, safeFilenames)
+
+	// Initialize regexps and HTTP client
+	initRegexps()
+	initHTTPClient()
+
+	return nil
+}
+
+// Run starts the crawler and blocks until all pages are downloaded or an error occurs.
+func Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	fmt.Printf("Starting download for %s, workers: %d\n", cfg.BaseURL, concurrency)
+	if maxDepth > 0 {
+		fmt.Printf("Max depth: %d\n", maxDepth)
+	}
+	if *delayBetweenRequests > 0 {
+		fmt.Printf("Delay between requests: %.2f seconds\n", *delayBetweenRequests)
+	}
+
+	tasks := make(chan task, queueSize)
+
+	if err := enqueueLink(ctx, cfg.BaseURL, 0, tasks); err != nil {
+		return fmt.Errorf("enqueue error: %w", err)
+	}
+
+	// Track first error encountered (fail-fast on critical errors)
+	var processError atomic.Value
+
+	// Goroutine to close task chan when all tasks are done
+	go func() {
+		tasksWg.Wait()
+		cancel()
+		close(tasks)
+	}()
+
+	// Worker pool: concurrent goroutines processing tasks from channel
+	var workersWg sync.WaitGroup
+	for i := 0; i < concurrency; i++ {
+		workersWg.Add(1)
+		go func() {
+			defer workersWg.Done()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case t, ok := <-tasks:
+					if !ok {
+						return
+					}
+					func() {
+						defer tasksWg.Done()
+						if err := processURL(ctx, t.url, t.depth, tasks); err != nil {
+							fmt.Printf("[ERROR] %s: %v\n", t.url, err)
+							if processError.Load() == nil {
+								processError.Store(err)
+								cancel()
+							}
+						}
+					}()
+				}
+			}
+		}()
+	}
+
+	workersWg.Wait()
+	if err, ok := processError.Load().(error); ok && err != nil {
+		return fmt.Errorf("processing failed: %w", err)
+	}
+
+	return nil
+}
 
 // --- Crawler logic ---
 

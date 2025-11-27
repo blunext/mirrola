@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"sync"
-	"sync/atomic"
+
+	"github.com/blunext/mirrola/crawler"
 )
 
 // Mirrola - Static website crawler that downloads and rewrites pages for offline viewing.
@@ -18,12 +18,12 @@ func main() {
 	outputDir := flag.String("dir", "./static", "Output directory")
 	rewriteURL := flag.Bool("rewrite", false, "Bake query params into filenames")
 	safeFilenames := flag.Bool("safe-filenames", false, "Use percent-encoded filenames (safer) instead of ASCII transliteration")
-	userAgent = flag.String("ua", "StaticCrawler/1.0", "HTTP User-Agent")
-	timeoutSec = flag.Int("timeout", 20, "HTTP timeout in seconds")
-	delayBetweenRequests = flag.Float64("delay", 0, "Delay in seconds between requests (0 = no delay, e.g., 5 = wait 5 seconds)")
-	flag.IntVar(&queueSize, "queue", 10000, "Task queue size")
-	flag.IntVar(&concurrency, "concurrency", runtime.NumCPU(), "Number of workers")
-	flag.IntVar(&maxDepth, "max-depth", 0, "Maximum crawl depth (0 = unlimited, 1 = current page only, 2 = current + links, etc.)")
+	userAgent := flag.String("ua", "StaticCrawler/1.0", "HTTP User-Agent")
+	timeoutSec := flag.Int("timeout", 20, "HTTP timeout in seconds")
+	delayBetweenRequests := flag.Float64("delay", 0, "Delay in seconds between requests (0 = no delay, e.g., 5 = wait 5 seconds)")
+	queueSize := flag.Int("queue", 10000, "Task queue size")
+	concurrency := flag.Int("concurrency", runtime.NumCPU(), "Number of workers")
+	maxDepth := flag.Int("max-depth", 0, "Maximum crawl depth (0 = unlimited, 1 = current page only, 2 = current + links, etc.)")
 	flag.Parse()
 
 	if *baseURL == "" {
@@ -31,72 +31,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize global Config from flags
-	cfg = NewConfigFromGlobals(*baseURL, *outputDir, *rewriteURL, *safeFilenames)
-
-	initRegexps()
-	initHTTPClient()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	fmt.Printf("Starting download for %s, workers: %d\n", cfg.BaseURL, concurrency)
-	if maxDepth > 0 {
-		fmt.Printf("Max depth: %d\n", maxDepth)
-	}
-	if *delayBetweenRequests > 0 {
-		fmt.Printf("Delay between requests: %.2f seconds\n", *delayBetweenRequests)
-	}
-	tasks := make(chan task, queueSize)
-
-	if err := enqueueLink(ctx, cfg.BaseURL, 0, tasks); err != nil {
-		fmt.Println("enqueue error:", err)
+	// Initialize crawler with configuration
+	if err := crawler.Init(*baseURL, *outputDir, *rewriteURL, *safeFilenames, *userAgent, *timeoutSec, *delayBetweenRequests, *queueSize, *concurrency, *maxDepth); err != nil {
+		fmt.Printf("[ERROR] Failed to initialize crawler: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Track first error encountered (fail-fast on critical errors)
-	var processError atomic.Value
-
-	// Goroutine to close task chan when all tasks are done
-	go func() {
-		tasksWg.Wait()
-		cancel()
-		close(tasks)
-	}()
-
-	// Worker pool: concurrent goroutines processing tasks from channel
-	var workersWg sync.WaitGroup
-	for i := 0; i < concurrency; i++ {
-		workersWg.Add(1)
-		go func() {
-			defer workersWg.Done()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case t, ok := <-tasks:
-					if !ok {
-						return
-					}
-					func() {
-						defer tasksWg.Done()
-						if err := processURL(ctx, t.url, t.depth, tasks); err != nil {
-							fmt.Printf("[ERROR] %s: %v\n", t.url, err)
-							if processError.Load() == nil {
-								processError.Store(err)
-								cancel()
-							}
-						}
-					}()
-				}
-			}
-		}()
-	}
-
-	workersWg.Wait()
-	if err, ok := processError.Load().(error); ok && err != nil {
-		fmt.Printf("[ERROR] Processing failed: %v\n", err)
+	ctx := context.Background()
+	if err := crawler.Run(ctx); err != nil {
+		fmt.Printf("[ERROR] Crawling failed: %v\n", err)
 		os.Exit(1)
 	}
+
 	fmt.Println("Downloading completed.")
 }

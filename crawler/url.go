@@ -1,4 +1,4 @@
-package main
+package crawler
 
 import (
 	"crypto/sha1"
