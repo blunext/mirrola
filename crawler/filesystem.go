@@ -157,11 +157,16 @@ func writeFile(path string, r io.Reader) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	if _, err := io.Copy(f, r); err != nil {
+	defer func() {
+		f.Close()
+		if err != nil {
+			os.Remove(tmp)
+		}
+	}()
+	if _, err = io.Copy(f, r); err != nil {
 		return err
 	}
-	if err := f.Close(); err != nil {
+	if err = f.Close(); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
