@@ -75,7 +75,11 @@ func (c *Config) ProcessInlineStyle(style, currentURL, base string) (string, []s
 		if len(urls) < 2 {
 			return m
 		}
-		abs, err := resolveURL(currentURL, urls[1])
+		orig := urls[1]
+		if strings.HasPrefix(orig, "data:") {
+			return m
+		}
+		abs, err := resolveURL(currentURL, orig)
 		if err != nil {
 			return m
 		}
