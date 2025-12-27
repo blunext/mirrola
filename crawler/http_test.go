@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -94,6 +95,65 @@ func TestHTTP_EdgeCases(t *testing.T) {
 			// To test fallback, I should ONLY have one on server.
 		}
 	})
+}
+
+func TestLooksLikeHTML(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		expected bool
+	}{
+		{
+			name:     "HTML with doctype",
+			body:     "<!DOCTYPE html><html><body>Hello</body></html>",
+			expected: true,
+		},
+		{
+			name:     "HTML without doctype",
+			body:     "<html><head><title>Test</title></head></html>",
+			expected: true,
+		},
+		{
+			name:     "HTML uppercase",
+			body:     "<HTML><BODY>Test</BODY></HTML>",
+			expected: true,
+		},
+		{
+			name:     "Plain text",
+			body:     "This is just plain text without any HTML tags",
+			expected: false,
+		},
+		{
+			name:     "JSON response without html tag",
+			body:     `{"key": "value", "data": "test"}`,
+			expected: false,
+		},
+		{
+			name:     "CSS file",
+			body:     "body { color: red; } .class { padding: 10px; }",
+			expected: false,
+		},
+		{
+			name:     "JavaScript file without html string",
+			body:     "function test() { return 'hello'; }",
+			expected: false,
+		},
+		{
+			name:     "HTML with leading whitespace",
+			body:     "   \n\n  <!doctype html><html></html>",
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp := &http.Response{
+				Body: io.NopCloser(strings.NewReader(tt.body)),
+			}
+			result := looksLikeHTML(resp)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }
 
 func TestHTTP_UnicodeFallback(t *testing.T) {

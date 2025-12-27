@@ -312,6 +312,30 @@ func TestConfig_ProcessInlineStyle(t *testing.T) {
 			expectedStyle: "color: red; background: url('/bg.png'); padding: 10px",
 			expectedFound: []string{"https://example.com/bg.png"},
 		},
+		{
+			name: "Data URI should be skipped",
+			config: Config{
+				BaseURL:    "https://example.com",
+				RewriteURL: false,
+			},
+			style:         "background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA')",
+			currentURL:    "https://example.com/page",
+			baseURL:       "https://example.com",
+			expectedStyle: "background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA')",
+			expectedFound: []string{},
+		},
+		{
+			name: "Data URI mixed with regular URL",
+			config: Config{
+				BaseURL:    "https://example.com",
+				RewriteURL: false,
+			},
+			style:         "background: url('data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'), url('https://example.com/bg.png')",
+			currentURL:    "https://example.com/page",
+			baseURL:       "https://example.com",
+			expectedStyle: "background: url('data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'), url('/bg.png')",
+			expectedFound: []string{"https://example.com/bg.png"},
+		},
 	}
 
 	for _, tt := range tests {
