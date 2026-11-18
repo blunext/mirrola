@@ -2,7 +2,8 @@
 
 Strona: http://localhost:8000, phpMyAdmin: http://localhost:8080. Hasła w `.env`.
 
-Kroki 1–4 robi automatycznie `./sync-from-host.sh` (`--skip-download` używa już pobranych plików).
+Kroki 1–4 robi automatycznie `make sync` w katalogu repo (`./sync-from-host.sh`).
+`make sync-skip` (`--skip-download`) używa już pobranych plików.
 Zastępuje lokalną bazę i pliki kopią z serwera.
 
 ## 1. Eksport z serwera

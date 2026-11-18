@@ -24,6 +24,8 @@ make crawl                                    # empty ~/priv/olamundo, then craw
 make serve                                    # preview ~/priv/olamundo on :8081 (8080 is phpMyAdmin)
 make publish                                  # git add -A + commit + push in ~/priv/olamundo (no crawl; run after checking with make serve); the push deploys to Cloudflare Pages
 make crawl URL=http://localhost:8000 DELAY=0  # crawl the local Docker WordPress; DIR=, STRICT=1 also work
+make sync                                     # replace the local WordPress (files + DB) with a fresh copy from the host (wordpress/sync-from-host.sh, interactive; wipes local-only posts)
+make sync-skip                                # same, reusing the already downloaded wordpress.tar.gz / wordpress_db.sql
 # make crawl runs clean-site first: it deletes everything in DIR except top-level .* and Pages config (_headers, _redirects, …).
 # It refuses unless DIR is a git repo containing the marker file .mirrola-site (touch DIR/.mirrola-site once). Never point DIR at a source repo.
 

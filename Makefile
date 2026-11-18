@@ -10,6 +10,10 @@
 #   make publish               # commit everything in DIR (new files too) and push;
 #                              # the push triggers the Cloudflare Pages deploy
 #
+#   make sync                  # replace the local WordPress (files + DB) with a copy
+#                              # from the host (wordpress/sync-from-host.sh, interactive)
+#   make sync-skip             # same, reusing wordpress.tar.gz / wordpress_db.sql
+#
 # Typical flow: make crawl -> make serve (check it locally) -> make publish
 
 URL         ?= https://olamundo.pl
@@ -27,7 +31,7 @@ BIN := mirrola
 # Marks a directory as crawler output that clean-site may empty.
 MARKER := .mirrola-site
 
-.PHONY: build test clean-site crawl serve publish
+.PHONY: build test clean-site crawl serve publish sync sync-skip
 
 build:
 	go build -o $(BIN) .
@@ -85,3 +89,11 @@ publish:
 		git push && \
 		echo "Pushed $$(git rev-parse --short HEAD) to $$(git rev-parse --abbrev-ref HEAD); Cloudflare Pages will deploy it."; \
 	fi
+
+# Pulls WordPress from the host into the local Docker setup (README steps 1-4).
+# Destroys local-only posts and uploads; the script asks for confirmation.
+sync:
+	./wordpress/sync-from-host.sh
+
+sync-skip:
+	./wordpress/sync-from-host.sh --skip-download
