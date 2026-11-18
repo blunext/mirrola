@@ -12,15 +12,22 @@ import (
 // --- HTML processing ---
 
 func processHTML(ctx context.Context, pageURL string, body []byte) ([]string, []string, error) {
+	return processHTMLAt(ctx, pageURL, pageURL, body)
+}
+
+// processHTMLAt processes a page requested as pageURL whose content was
+// served from finalURL (after redirects). Relative links resolve against
+// finalURL, as a browser would; the file is saved under pageURL's path.
+func processHTMLAt(ctx context.Context, pageURL, finalURL string, body []byte) ([]string, []string, error) {
 	doc, err := html.Parse(bytes.NewReader(body))
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// compute base href, if present
-	currentBase := pageURL
+	currentBase := finalURL
 	if b := findBaseHref(doc); b != "" {
-		if abs, err := resolveURL(pageURL, b); err == nil {
+		if abs, err := resolveURL(finalURL, b); err == nil {
 			currentBase = abs.String()
 		}
 	}
@@ -29,7 +36,7 @@ func processHTML(ctx context.Context, pageURL string, body []byte) ([]string, []
 	assets, links := rewriteLinks(doc, currentBase, cfg.BaseURL)
 
 	outputFile := cfg.GetOutputPath(pageURL, "text/html")
-	write, err := cfg.claimOutput(outputFile, pageURL)
+	write, err := cfg.claimOutput(outputFile, finalURL)
 	if err != nil {
 		return nil, nil, err
 	}

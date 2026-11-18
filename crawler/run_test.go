@@ -163,3 +163,84 @@ func TestRun_CancelReturnsErrorAndRunsAgain(t *testing.T) {
 	_, err = runSite(t, context.Background(), siteWithAsset(http.StatusOK), false, 100, 4)
 	require.NoError(t, err)
 }
+
+// TestRun_RelativeLinksResolveAfterRedirect: WordPress redirects /post to
+// /post/. A relative img.jpg on that page is /post/img.jpg, not /img.jpg.
+func TestRun_RelativeLinksResolveAfterRedirect(t *testing.T) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			servePage(w, `<a href="/post">post</a>`)
+		case "/post":
+			http.Redirect(w, r, "/post/", http.StatusMovedPermanently)
+		case "/post/":
+			servePage(w, `<img src="img.jpg">`)
+		case "/post/img.jpg":
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Write([]byte("jpg"))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	dir, err := runSite(t, context.Background(), h, false, 100, 4)
+	require.NoError(t, err)
+	assert.FileExists(t, filepath.Join(dir, "post", "img.jpg"))
+	page, err := os.ReadFile(filepath.Join(dir, "post", "index.html"))
+	require.NoError(t, err)
+	assert.Contains(t, string(page), `src="/post/img.jpg"`)
+	assert.Empty(t, cfg.Collisions(), "/post and /post/ are one resource")
+}
+
+// offsite is a second host for redirect tests.
+func offsite(t *testing.T) *httptest.Server {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/img.jpg" {
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Write([]byte("cdn"))
+			return
+		}
+		servePage(w, `<p>production</p>`)
+	}))
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+// TestRun_StartURLRedirectingOffsiteFails: a local WordPress whose siteurl
+// still points to production redirects everything there. The crawl must fail
+// instead of silently mirroring production.
+func TestRun_StartURLRedirectingOffsiteFails(t *testing.T) {
+	prod := offsite(t)
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, prod.URL+r.URL.Path, http.StatusMovedPermanently)
+	})
+	dir, err := runSite(t, context.Background(), h, false, 100, 4)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "another host")
+	assert.Contains(t, err.Error(), "siteurl")
+	assert.NoFileExists(t, filepath.Join(dir, "index.html"))
+}
+
+func TestRun_PageRedirectingOffsiteIsSkipped(t *testing.T) {
+	prod := offsite(t)
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			servePage(w, `<a href="/go/">go</a><img src="/img.jpg">`)
+		case "/go/":
+			http.Redirect(w, r, prod.URL+"/", http.StatusFound)
+		case "/img.jpg": // asset served from a CDN
+			http.Redirect(w, r, prod.URL+"/img.jpg", http.StatusFound)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	dir, err := runSite(t, context.Background(), h, false, 100, 4)
+	require.NoError(t, err)
+	assert.NoFileExists(t, filepath.Join(dir, "go", "index.html"), "another host's page must not be published as ours")
+	got, err := os.ReadFile(filepath.Join(dir, "img.jpg"))
+	require.NoError(t, err, "an asset redirected to a CDN is still saved")
+	assert.Equal(t, "cdn", string(got))
+
+	_, err = runSite(t, context.Background(), h, true, 100, 4)
+	require.Error(t, err, "-strict fails on it")
+}

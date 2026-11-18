@@ -105,11 +105,11 @@ func Run(parent context.Context) error {
 						err := processURL(ctx, t.url, t.depth, tasks)
 						switch {
 						case err == nil:
-						case isDeadLink(err) && !cfg.Strict && t.from != "":
-							// A dead start URL is fatal (falls through to default):
-							// otherwise Run would succeed with an empty mirror.
+						case isSkippable(err) && !cfg.Strict && t.from != "":
+							// A dead or off-site start URL is fatal (falls through to
+							// default): otherwise Run would succeed with an empty mirror.
 							line := fmt.Sprintf("%s (%v), linked from %s", t.url, err, t.from)
-							fmt.Printf("[WARN] dead link: %s\n", line)
+							fmt.Printf("[WARN] skipped: %s\n", line)
 							deadMu.Lock()
 							deadLinks = append(deadLinks, line)
 							deadMu.Unlock()
@@ -145,7 +145,7 @@ func Run(parent context.Context) error {
 	}
 	if len(deadLinks) > 0 {
 		sort.Strings(deadLinks)
-		fmt.Printf("[WARN] %d dead link(s) skipped (fix them in WordPress, or use -strict to fail):\n", len(deadLinks))
+		fmt.Printf("[WARN] %d link(s) skipped, dead or redirecting to another host (fix them in WordPress, or use -strict to fail):\n", len(deadLinks))
 		for _, line := range deadLinks {
 			fmt.Printf("  - %s\n", line)
 		}
@@ -167,11 +167,28 @@ type httpStatusError struct {
 
 func (e *httpStatusError) Error() string { return "HTTP " + e.Status }
 
+// offsiteRedirectError is returned by processURL for an HTML page whose
+// request was redirected to another host.
+type offsiteRedirectError struct {
+	From, To string
+}
+
+func (e *offsiteRedirectError) Error() string {
+	return fmt.Sprintf("redirects to another host: %s (if this is a local WordPress copy, its siteurl/home options still point there)", e.To)
+}
+
 // isDeadLink reports whether err means the URL doesn't exist on the site (a
 // broken link in content), as opposed to the server refusing or failing.
 func isDeadLink(err error) bool {
 	var se *httpStatusError
 	return errors.As(err, &se) && (se.Code == http.StatusNotFound || se.Code == http.StatusGone)
+}
+
+// isSkippable reports whether the URL can be left out of the mirror without
+// aborting the crawl: a dead link, or a page that redirects off-site.
+func isSkippable(err error) bool {
+	var oe *offsiteRedirectError
+	return isDeadLink(err) || errors.As(err, &oe)
 }
 
 // --- Crawler logic ---
@@ -244,6 +261,16 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 		return &httpStatusError{Code: resp.StatusCode, Status: resp.Status}
 	}
 
+	// http.Client follows redirects silently; final is where the content
+	// actually came from. Content is still saved under link's path (that is
+	// what pages link to), but relative URLs inside it resolve against final,
+	// and the collision check sees final (so /post and its redirect target
+	// /post/ count as one resource).
+	final := link
+	if resp.Request != nil && resp.Request.URL != nil {
+		final = resp.Request.URL.String()
+	}
+
 	ct := strings.ToLower(resp.Header.Get("Content-Type"))
 	if i := strings.Index(ct, ";"); i >= 0 {
 		ct = ct[:i]
@@ -266,11 +293,19 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 			}
 		}
 
+		// A page that redirects to another host is not part of this site.
+		// Saving it would publish someone else's page under our path, or, for
+		// a local WordPress whose siteurl still points to production, silently
+		// mirror production instead of the local copy.
+		if !cfg.SameHost(final, link) {
+			return &offsiteRedirectError{From: link, To: final}
+		}
+
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return err
 		}
-		assets, links, err := processHTML(ctx, link, body)
+		assets, links, err := processHTMLAt(ctx, link, final, body)
 		if err != nil {
 			return err
 		}
@@ -294,7 +329,7 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 			return err
 		}
 		css := string(b)
-		newCSS, found := cfg.ProcessCSSFile(css, link, cfg.BaseURL)
+		newCSS, found := cfg.ProcessCSSFile(css, final, cfg.BaseURL)
 		// CSS assets also inherit current depth
 		for _, l := range found {
 			if err := enqueueLink(ctx, l, link, depth, tasks); err != nil {
@@ -302,7 +337,7 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 			}
 		}
 		out := cfg.GetOutputPath(link, ct)
-		write, err := cfg.claimOutput(out, link)
+		write, err := cfg.claimOutput(out, final)
 		if err != nil || !write {
 			return err
 		}
@@ -313,8 +348,9 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 		return nil
 	default:
 		// binary or other asset
+		// Assets redirected elsewhere (e.g. to a CDN) are fine to save locally.
 		out := cfg.GetOutputPath(link, ct)
-		write, err := cfg.claimOutput(out, link)
+		write, err := cfg.claimOutput(out, final)
 		if err != nil || !write {
 			return err
 		}
