@@ -6,6 +6,7 @@ import (
 	"mime"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"unicode"
@@ -70,8 +71,12 @@ func (c *Config) GetOutputPath(link string, contentType string) string {
 		pathPart = c.applyQueryBaking(u, pathPart)
 	}
 
-	// Ensure path is relative to OutputDir (prevent path traversal)
-	pathPart = strings.TrimLeft(pathPart, "/")
+	// Confine the path to OutputDir. This must run after transliteration and
+	// query baking: "..́" survives URL cleaning but becomes ".." once the
+	// accent is stripped, and baked query values may contain "/../". Cleaning
+	// a rooted path cannot climb above "/" (browsers resolve dot segments in
+	// links the same way, so links still match).
+	pathPart = strings.TrimLeft(path.Clean("/"+pathPart), "/")
 
 	return filepath.Join(c.OutputDir, pathPart)
 }

@@ -198,3 +198,29 @@ func TestWriteFile_ConcurrentSamePath(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, entries, 1, "no temp files may be left behind")
 }
+
+// TestGetOutputPath_StaysInOutputDir: paths that only turn into ".." after
+// transliteration ("..́") or baked query values must not escape OutputDir.
+func TestGetOutputPath_StaysInOutputDir(t *testing.T) {
+	links := []string{
+		"https://example.com/a/../../etc/x.jpg",
+		"https://example.com/a/%2E%2E/%2E%2E/etc/x.jpg",
+		"https://example.com/a/..%CC%81/..%CC%81/..%CC%81/etc/x.jpg",
+		"https://example.com/style.css?x=/../../../../tmp/evil",
+		"https://example.com/page?x=/../../../../tmp/evil",
+	}
+	for _, rewrite := range []bool{false, true} {
+		c := &Config{OutputDir: "/out", RewriteURL: rewrite}
+		for _, l := range links {
+			abs, err := resolveURL("https://example.com/", l)
+			require.NoError(t, err)
+			for _, ct := range []string{"image/jpeg", "text/css", "text/html"} {
+				got := c.GetOutputPath(abs.String(), ct)
+				rel, err := filepath.Rel(c.OutputDir, got)
+				require.NoError(t, err)
+				assert.False(t, rel == ".." || strings.HasPrefix(rel, "../"),
+					"rewrite=%v %s (%s) escaped OutputDir: %s", rewrite, l, ct, got)
+			}
+		}
+	}
+}
