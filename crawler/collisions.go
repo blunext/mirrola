@@ -40,7 +40,11 @@ func canonicalSource(link string) string {
 	if err != nil {
 		return link
 	}
-	key := strings.ToLower(u.Host) + norm.NFC.String(u.Path)
+	p := u.Path
+	if p == "" {
+		p = "/" // https://host and https://host/ are the same page
+	}
+	key := strings.ToLower(u.Host) + norm.NFC.String(p)
 	if u.RawQuery != "" {
 		key += "?" + u.RawQuery
 	}

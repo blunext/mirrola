@@ -99,6 +99,15 @@ func TestClaimOutput(t *testing.T) {
 		assert.Empty(t, c.Collisions())
 	})
 
+	t.Run("host with and without trailing slash is not a collision", func(t *testing.T) {
+		c := newCfg(true)
+		_, _ = c.claimOutput("/out/index.html", "https://example.com")
+		write, err := c.claimOutput("/out/index.html", "https://example.com/")
+		require.NoError(t, err)
+		assert.False(t, write)
+		assert.Empty(t, c.Collisions())
+	})
+
 	t.Run("different URLs on the same path warn and keep the first", func(t *testing.T) {
 		c := newCfg(false)
 		_, _ = c.claimOutput("/out/a.jpg", nfcURL)
