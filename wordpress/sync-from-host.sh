@@ -13,6 +13,8 @@ HOST=om
 REMOTE_DIR='~/domains/olamundo.pl'
 DB=olamundo_wp1
 LOCAL=http://localhost:8000
+# The host has no post-quantum key exchange; nothing to fix on our side.
+SSH_OPTS=(-o WarnWeakCrypto=no)
 
 die() { echo "BŁĄD: $*" >&2; exit 1; }
 step() { echo; echo "== $*"; }
@@ -35,12 +37,12 @@ read -r -p "Wpisz 'tak', aby kontynuować: " answer || die "przerwano"
 
 if ! $skip_download; then
   step "1. Eksport na serwerze ($HOST)"
+  echo "Hasło do bazy $DB:"
+  ssh -q -t "${SSH_OPTS[@]}" "$HOST" "mysqldump --single-transaction --default-character-set=utf8mb4 --no-tablespaces -u $DB -p $DB > wordpress_db.sql"
   # wflogs: Wordfence rewrites it constantly ("file changed as we read it").
   # shellcheck disable=SC2029  # $REMOTE_DIR is meant to be filled in here
-  ssh "$HOST" "tar -czf wordpress.tar.gz -C $REMOTE_DIR --exclude='./public_html/wp-content/cache' --exclude='./public_html/wp-content/wflogs' ./public_html"
-  echo "Hasło do bazy $DB:"
-  ssh -t "$HOST" "mysqldump --single-transaction --default-character-set=utf8mb4 --no-tablespaces -u $DB -p $DB > wordpress_db.sql"
-  scp "$HOST:wordpress.tar.gz" "$HOST:wordpress_db.sql" .
+  ssh "${SSH_OPTS[@]}" "$HOST" "tar -czf wordpress.tar.gz -C $REMOTE_DIR --exclude='./public_html/wp-content/cache' --exclude='./public_html/wp-content/wflogs' ./public_html"
+  scp "${SSH_OPTS[@]}" "$HOST:wordpress_db.sql" "$HOST:wordpress.tar.gz" .
 fi
 
 step "Sprawdzenie pobranych plików"

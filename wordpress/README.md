@@ -10,18 +10,18 @@ Zastępuje lokalną bazę i pliki kopią z serwera.
 
 ```bash
 ssh om
-tar -czf wordpress.tar.gz -C ~/domains/olamundo.pl --exclude='./public_html/wp-content/cache' --exclude='./public_html/wp-content/wflogs' ./public_html
-tar -tzf wordpress.tar.gz | head -3      # ./public_html/...
-ls -lh wordpress.tar.gz
 grep DB_ ~/domains/olamundo.pl/public_html/wp-config.php
 mysqldump --single-transaction --default-character-set=utf8mb4 --no-tablespaces \
   -u olamundo_wp1 -p olamundo_wp1 > wordpress_db.sql
+tar -czf wordpress.tar.gz -C ~/domains/olamundo.pl --exclude='./public_html/wp-content/cache' --exclude='./public_html/wp-content/wflogs' ./public_html
+tar -tzf wordpress.tar.gz | head -3      # ./public_html/...
+ls -lh wordpress.tar.gz
 exit
 ```
 
 ```bash
 cd wordpress
-scp om:wordpress.tar.gz om:wordpress_db.sql .
+scp om:wordpress_db.sql om:wordpress.tar.gz .
 ```
 
 ## 2. Rozpakowanie
