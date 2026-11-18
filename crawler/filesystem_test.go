@@ -19,8 +19,7 @@ func TestConfig_GetOutputPath(t *testing.T) {
 		{
 			name: "Polish characters in directory and file name",
 			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: false,
+				OutputDir: "/tmp",
 			},
 			url:         "https://example.com/zdjęcia/łódź.jpg",
 			contentType: "image/jpeg",
@@ -29,8 +28,7 @@ func TestConfig_GetOutputPath(t *testing.T) {
 		{
 			name: "Transliteration mode with Polish characters",
 			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: false,
+				OutputDir: "/tmp",
 			},
 			url:         "https://example.com/zdjęcia/łódź.jpg",
 			contentType: "image/jpeg",
@@ -39,8 +37,7 @@ func TestConfig_GetOutputPath(t *testing.T) {
 		{
 			name: "All Polish diacritics - lowercase",
 			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: false,
+				OutputDir: "/tmp",
 			},
 			url:         "https://example.com/ąćęłńóśźż.txt",
 			contentType: "text/plain",
@@ -49,38 +46,16 @@ func TestConfig_GetOutputPath(t *testing.T) {
 		{
 			name: "All Polish diacritics - uppercase",
 			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: false,
+				OutputDir: "/tmp",
 			},
 			url:         "https://example.com/ĄĆĘŁŃÓŚŹŻ.txt",
 			contentType: "text/plain",
 			expected:    "/tmp/ACELNOSZZ.txt",
 		},
 		{
-			name: "Query param baking enabled - CSS file",
+			name: "Query string is not part of the file name",
 			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: true,
-			},
-			url:         "https://example.com/style.css?v=1.2",
-			contentType: "text/css",
-			expected:    "/tmp/style_v_1.2.css",
-		},
-		{
-			name: "Query param baking enabled - JS file",
-			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: true,
-			},
-			url:         "https://example.com/app.js?version=3.4.5",
-			contentType: "application/javascript",
-			expected:    "/tmp/app_version_3.4.5.js",
-		},
-		{
-			name: "Query param baking disabled - keeps query in path",
-			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: false,
+				OutputDir: "/tmp",
 			},
 			url:         "https://example.com/style.css?v=1.2",
 			contentType: "text/css",
@@ -89,8 +64,7 @@ func TestConfig_GetOutputPath(t *testing.T) {
 		{
 			name: "HTML page without extension",
 			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: false,
+				OutputDir: "/tmp",
 			},
 			url:         "https://example.com/about",
 			contentType: "text/html",
@@ -99,8 +73,7 @@ func TestConfig_GetOutputPath(t *testing.T) {
 		{
 			name: "HTML page with trailing slash",
 			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: false,
+				OutputDir: "/tmp",
 			},
 			url:         "https://example.com/products/",
 			contentType: "text/html",
@@ -109,8 +82,7 @@ func TestConfig_GetOutputPath(t *testing.T) {
 		{
 			name: "Root path",
 			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: false,
+				OutputDir: "/tmp",
 			},
 			url:         "https://example.com/",
 			contentType: "text/html",
@@ -119,8 +91,7 @@ func TestConfig_GetOutputPath(t *testing.T) {
 		{
 			name: "Image with deep path",
 			config: Config{
-				OutputDir:  "/var/www",
-				RewriteURL: false,
+				OutputDir: "/var/www",
 			},
 			url:         "https://example.com/assets/images/logos/company.png",
 			contentType: "image/png",
@@ -129,38 +100,25 @@ func TestConfig_GetOutputPath(t *testing.T) {
 		{
 			name: "File without extension - adds extension from content type",
 			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: false,
+				OutputDir: "/tmp",
 			},
 			url:         "https://example.com/image",
 			contentType: "image/jpeg",
 			expected:    "/tmp/image.jpg",
 		},
 		{
-			name: "Combined: Polish chars + query baking",
+			name: "Polish characters + query params (query not in file name)",
 			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: true,
-			},
-			url:         "https://example.com/styl-główny.css?wersja=2.0",
-			contentType: "text/css",
-			expected:    "/tmp/styl-glowny_wersja_2.0.css",
-		},
-		{
-			name: "Polish characters + query params",
-			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: true,
+				OutputDir: "/tmp",
 			},
 			url:         "https://example.com/zdjęcie.jpg?v=1",
 			contentType: "image/jpeg",
-			expected:    "/tmp/zdjecie_v_1.jpg",
+			expected:    "/tmp/zdjecie.jpg",
 		},
 		{
 			name: "URL without scheme - treated as path",
 			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: false,
+				OutputDir: "/tmp",
 			},
 			url:         "example.com/page",
 			contentType: "text/html",
@@ -169,8 +127,7 @@ func TestConfig_GetOutputPath(t *testing.T) {
 		{
 			name: "WebP image",
 			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: false,
+				OutputDir: "/tmp",
 			},
 			url:         "https://example.com/photo.webp",
 			contentType: "image/webp",
@@ -179,8 +136,7 @@ func TestConfig_GetOutputPath(t *testing.T) {
 		{
 			name: "WOFF2 font",
 			config: Config{
-				OutputDir:  "/tmp",
-				RewriteURL: false,
+				OutputDir: "/tmp",
 			},
 			url:         "https://example.com/fonts/roboto.woff2",
 			contentType: "font/woff2",
@@ -252,75 +208,6 @@ func TestConfig_NormalizePath(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.config.normalizePath(tt.urlPath)
 			assert.Equal(t, tt.expected, result, "normalizePath produced unexpected result")
-		})
-	}
-}
-
-// TestConfig_ApplyQueryBaking tests query parameter baking into filenames
-func TestConfig_ApplyQueryBaking(t *testing.T) {
-	// Note: This requires URL parsing, so we test through helper that creates URLs
-	tests := []struct {
-		name        string
-		config      Config
-		rawURL      string
-		pathPart    string
-		expectedExt string // We check if path contains this
-	}{
-		{
-			name: "Static asset - CSS",
-			config: Config{
-				RewriteURL: true,
-			},
-			rawURL:      "https://example.com/style.css?v=1.2",
-			pathPart:    "/style.css",
-			expectedExt: "_v_1.2.css",
-		},
-		{
-			name: "Static asset - JS",
-			config: Config{
-				RewriteURL: true,
-			},
-			rawURL:      "https://example.com/app.js?version=3.0",
-			pathPart:    "/app.js",
-			expectedExt: "_version_3.0.js",
-		},
-		{
-			name: "Static asset - image",
-			config: Config{
-				RewriteURL: true,
-			},
-			rawURL:      "https://example.com/photo.jpg?size=large",
-			pathPart:    "/photo.jpg",
-			expectedExt: "_size_large.jpg",
-		},
-		{
-			name: "Page without extension",
-			config: Config{
-				RewriteURL: true,
-			},
-			rawURL:      "https://example.com/search?q=test",
-			pathPart:    "/search",
-			expectedExt: "index_q_test.html",
-		},
-		{
-			name: "Asset query baking",
-			config: Config{
-				RewriteURL: true,
-			},
-			rawURL:      "https://example.com/styl.css?v=1",
-			pathPart:    "/styl.css",
-			expectedExt: "_v_1.css",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Parse URL to get the u object
-			u, err := parseAndNormalizeURL(tt.rawURL)
-			assert.NoError(t, err, "URL parsing should not fail")
-
-			result := tt.config.applyQueryBaking(u, tt.pathPart)
-			assert.Contains(t, result, tt.expectedExt, "Baked query params should be in the path")
 		})
 	}
 }

@@ -50,9 +50,8 @@ func TestCrawler_BasicFlow(t *testing.T) {
 
 	// Setup Config
 	cfg = &Config{
-		BaseURL:    ts.URL,
-		OutputDir:  tempDir,
-		RewriteURL: true,
+		BaseURL:   ts.URL,
+		OutputDir: tempDir,
 	}
 	cfg.InitRegexps()
 

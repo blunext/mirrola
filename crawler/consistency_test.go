@@ -118,7 +118,7 @@ func TestClaimOutput(t *testing.T) {
 		assert.Contains(t, c.Collisions()[0], "/out/a.jpg")
 	})
 
-	t.Run("query-only difference is a collision without -rewrite", func(t *testing.T) {
+	t.Run("query-only difference is a collision (query is not in the file name)", func(t *testing.T) {
 		c := newCfg(false)
 		_, _ = c.claimOutput("/out/style.css", "https://example.com/style.css?ver=1")
 		write, _ := c.claimOutput("/out/style.css", "https://example.com/style.css?ver=2")
@@ -209,7 +209,8 @@ func TestWriteFile_ConcurrentSamePath(t *testing.T) {
 }
 
 // TestGetOutputPath_StaysInOutputDir: paths that only turn into ".." after
-// transliteration ("..́") or baked query values must not escape OutputDir.
+// transliteration ("..\u0301"), or carry "/../" in the query, must not escape
+// OutputDir.
 func TestGetOutputPath_StaysInOutputDir(t *testing.T) {
 	links := []string{
 		"https://example.com/a/../../etc/x.jpg",
@@ -218,18 +219,16 @@ func TestGetOutputPath_StaysInOutputDir(t *testing.T) {
 		"https://example.com/style.css?x=/../../../../tmp/evil",
 		"https://example.com/page?x=/../../../../tmp/evil",
 	}
-	for _, rewrite := range []bool{false, true} {
-		c := &Config{OutputDir: "/out", RewriteURL: rewrite}
-		for _, l := range links {
-			abs, err := resolveURL("https://example.com/", l)
+	c := &Config{OutputDir: "/out"}
+	for _, l := range links {
+		abs, err := resolveURL("https://example.com/", l)
+		require.NoError(t, err)
+		for _, ct := range []string{"image/jpeg", "text/css", "text/html"} {
+			got := c.GetOutputPath(abs.String(), ct)
+			rel, err := filepath.Rel(c.OutputDir, got)
 			require.NoError(t, err)
-			for _, ct := range []string{"image/jpeg", "text/css", "text/html"} {
-				got := c.GetOutputPath(abs.String(), ct)
-				rel, err := filepath.Rel(c.OutputDir, got)
-				require.NoError(t, err)
-				assert.False(t, rel == ".." || strings.HasPrefix(rel, "../"),
-					"rewrite=%v %s (%s) escaped OutputDir: %s", rewrite, l, ct, got)
-			}
+			assert.False(t, rel == ".." || strings.HasPrefix(rel, "../"),
+				"%s (%s) escaped OutputDir: %s", l, ct, got)
 		}
 	}
 }

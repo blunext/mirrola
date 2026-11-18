@@ -13,8 +13,7 @@ type Config struct {
 	OutputDir string
 
 	// Processing options
-	RewriteURL bool
-	Strict     bool // abort the crawl when two URLs map to the same output file
+	Strict bool // fail on dead links (404/410) and on output file collisions
 
 	// outputs tracks which URL produced each output file (nil = no tracking)
 	outputs *outputRegistry
@@ -44,11 +43,10 @@ func (c *Config) InitRegexps() {
 
 // NewConfigFromGlobals creates a Config instance from command-line flag values.
 // This allows gradual migration from globals to Config-based approach.
-func NewConfigFromGlobals(baseURL, outputDir string, rewriteURL bool) *Config {
+func NewConfigFromGlobals(baseURL, outputDir string) *Config {
 	cfg := &Config{
 		BaseURL:              baseURL,
 		OutputDir:            outputDir,
-		RewriteURL:           rewriteURL,
 		UserAgent:            *userAgent,
 		Timeout:              time.Duration(*timeoutSec) * time.Second,
 		DelayBetweenRequests: *delayBetweenRequests,

@@ -20,8 +20,7 @@ func TestConfig_ProcessSrcSet(t *testing.T) {
 		{
 			name: "Single image URL",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "https://example.com/image.jpg",
 			currentURL:     "https://example.com/page",
@@ -32,8 +31,7 @@ func TestConfig_ProcessSrcSet(t *testing.T) {
 		{
 			name: "Image with 1x descriptor",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "https://example.com/image.jpg 1x",
 			currentURL:     "https://example.com/page",
@@ -44,8 +42,7 @@ func TestConfig_ProcessSrcSet(t *testing.T) {
 		{
 			name: "Multiple images with density descriptors",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "https://example.com/image-1x.jpg 1x, https://example.com/image-2x.jpg 2x",
 			currentURL:     "https://example.com/page",
@@ -59,8 +56,7 @@ func TestConfig_ProcessSrcSet(t *testing.T) {
 		{
 			name: "Multiple images with width descriptors",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "https://example.com/small.jpg 480w, https://example.com/large.jpg 1024w",
 			currentURL:     "https://example.com/page",
@@ -74,8 +70,7 @@ func TestConfig_ProcessSrcSet(t *testing.T) {
 		{
 			name: "Three images with different sizes",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "https://example.com/img-480.jpg 480w, https://example.com/img-800.jpg 800w, https://example.com/img-1200.jpg 1200w",
 			currentURL:     "https://example.com/page",
@@ -90,8 +85,7 @@ func TestConfig_ProcessSrcSet(t *testing.T) {
 		{
 			name: "External URLs should be skipped",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "https://cdn.example.com/external.jpg 1x, https://example.com/local.jpg 2x",
 			currentURL:     "https://example.com/page",
@@ -102,8 +96,7 @@ func TestConfig_ProcessSrcSet(t *testing.T) {
 		{
 			name: "Relative URLs should be resolved",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "../images/photo.jpg 1x, ../images/photo@2x.jpg 2x",
 			currentURL:     "https://example.com/pages/blog.html",
@@ -115,25 +108,9 @@ func TestConfig_ProcessSrcSet(t *testing.T) {
 			},
 		},
 		{
-			name: "Query parameters with rewrite enabled",
+			name: "Query parameters are kept in the link",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: true,
-			},
-			srcset:         "https://example.com/img.jpg?v=1 1x, https://example.com/img.jpg?v=2 2x",
-			currentURL:     "https://example.com/page",
-			baseURL:        "https://example.com",
-			expectedSrcset: "/img_v_1.jpg 1x, /img_v_2.jpg 2x",
-			expectedFound: []string{
-				"https://example.com/img.jpg?v=1",
-				"https://example.com/img.jpg?v=2",
-			},
-		},
-		{
-			name: "Query parameters with rewrite disabled",
-			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "https://example.com/img.jpg?size=small 480w, https://example.com/img.jpg?size=large 1024w",
 			currentURL:     "https://example.com/page",
@@ -147,8 +124,7 @@ func TestConfig_ProcessSrcSet(t *testing.T) {
 		{
 			name: "Polish characters in URL",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "https://example.com/zdjęcia/łódź-480.jpg 480w, https://example.com/zdjęcia/łódź-800.jpg 800w",
 			currentURL:     "https://example.com/page",
@@ -162,8 +138,7 @@ func TestConfig_ProcessSrcSet(t *testing.T) {
 		{
 			name: "WebP images with descriptors",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "https://example.com/photo.webp 1x, https://example.com/photo-2x.webp 2x",
 			currentURL:     "https://example.com/page",
@@ -177,8 +152,7 @@ func TestConfig_ProcessSrcSet(t *testing.T) {
 		{
 			name: "Image without descriptor",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "https://example.com/image.jpg",
 			currentURL:     "https://example.com/page",
@@ -214,8 +188,7 @@ func TestConfig_ProcessSrcSet_EdgeCases(t *testing.T) {
 		{
 			name: "Empty srcset",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "",
 			currentURL:     "https://example.com/page",
@@ -226,8 +199,7 @@ func TestConfig_ProcessSrcSet_EdgeCases(t *testing.T) {
 		{
 			name: "Whitespace only",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "   ",
 			currentURL:     "https://example.com/page",
@@ -238,8 +210,7 @@ func TestConfig_ProcessSrcSet_EdgeCases(t *testing.T) {
 		{
 			name: "Trailing comma",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "https://example.com/img1.jpg 1x, https://example.com/img2.jpg 2x,",
 			currentURL:     "https://example.com/page",
@@ -253,8 +224,7 @@ func TestConfig_ProcessSrcSet_EdgeCases(t *testing.T) {
 		{
 			name: "Extra whitespace between entries",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "https://example.com/img1.jpg  1x  ,   https://example.com/img2.jpg  2x",
 			currentURL:     "https://example.com/page",
@@ -268,8 +238,7 @@ func TestConfig_ProcessSrcSet_EdgeCases(t *testing.T) {
 		{
 			name: "Relative path without scheme - resolved",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			srcset:         "not-a-valid-url 1x",
 			currentURL:     "https://example.com/page",

@@ -66,14 +66,9 @@ func (c *Config) GetOutputPath(link string, contentType string) string {
 	// Add extension if missing based on content type
 	pathPart = addMissingExtension(pathPart, contentType)
 
-	// Bake query parameters into filename if enabled
-	if c.RewriteURL && u.RawQuery != "" {
-		pathPart = c.applyQueryBaking(u, pathPart)
-	}
-
-	// Confine the path to OutputDir. This must run after transliteration and
-	// query baking: "..́" survives URL cleaning but becomes ".." once the
-	// accent is stripped, and baked query values may contain "/../". Cleaning
+	// Confine the path to OutputDir. This must run after transliteration:
+	// "..́" survives URL cleaning but becomes ".." once the accent is
+	// stripped. Cleaning
 	// a rooted path cannot climb above "/" (browsers resolve dot segments in
 	// links the same way, so links still match).
 	pathPart = strings.TrimLeft(path.Clean("/"+pathPart), "/")
@@ -96,20 +91,6 @@ func transliterate(p string) string {
 		return cleaned
 	}
 	return p
-}
-
-// applyQueryBaking bakes query parameters into the filename (Config-based)
-func (c *Config) applyQueryBaking(u *url.URL, pathPart string) string {
-	// Rewrite URL to bake query params
-	if isStaticAssetExt(filepath.Ext(pathPart)) {
-		u = rewriteAssetURL(u)
-	} else {
-		u = rewritePageURL(u)
-	}
-	// Re-apply transliteration: query values baked into the name may contain diacritics
-	pathPart = transliterate(u.Path)
-
-	return pathPart
 }
 
 func extForContentType(ct string) (string, bool) {
@@ -176,10 +157,6 @@ func saveHTML(outputFile string, doc *html.Node) error {
 		return err
 	}
 	return writeFile(outputFile, &buf)
-}
-
-func isStaticAssetExt(ext string) bool {
-	return staticAssetExts[strings.ToLower(ext)]
 }
 
 func removeDiacritics(s string) (string, error) {

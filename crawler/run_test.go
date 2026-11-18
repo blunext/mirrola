@@ -21,7 +21,7 @@ func runSite(t *testing.T, ctx context.Context, h http.Handler, strict bool, que
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
 	dir := t.TempDir()
-	require.NoError(t, Init(ts.URL, dir, false, strict, "MirrolaTest/1.0", 5, 0, queue, workers, 0))
+	require.NoError(t, Init(ts.URL, dir, strict, "MirrolaTest/1.0", 5, 0, queue, workers, 0))
 
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -85,7 +85,7 @@ func TestRun_DeadStartURLFails(t *testing.T) {
 }
 
 func TestInit_RejectsZeroConcurrency(t *testing.T) {
-	require.Error(t, Init("http://example.com", t.TempDir(), false, false, "ua", 5, 0, 10, 0, 0))
+	require.Error(t, Init("http://example.com", t.TempDir(), false, "ua", 5, 0, 10, 0, 0))
 }
 
 func TestRun_DeadLinkFailsInStrictMode(t *testing.T) {

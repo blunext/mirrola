@@ -29,9 +29,6 @@ func (c *Config) ProcessSrcSet(srcset string, currentURL, base string) (string, 
 		}
 		if c.SameHost(abs.String(), base) {
 			found = append(found, abs.String())
-			if c.RewriteURL && abs.RawQuery != "" {
-				abs = c.RewriteURLWithPolicy(abs)
-			}
 			fixPath(abs)
 			rel := c.ToRelative(abs, base)
 			if desc != "" {

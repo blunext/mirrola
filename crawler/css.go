@@ -27,9 +27,6 @@ func (c *Config) ProcessCSSFile(css, cssURL, base string) (string, []string) {
 		}
 		if c.SameHost(abs.String(), base) {
 			found = append(found, abs.String())
-			if c.RewriteURL && abs.RawQuery != "" {
-				abs = c.RewriteURLWithPolicy(abs)
-			}
 			fixPath(abs)
 			return fmt.Sprintf("url('%s')", c.ToRelative(abs, base))
 		}
@@ -56,9 +53,6 @@ func (c *Config) ProcessInlineCSS(css, currentURL, base string) (string, []strin
 		}
 		if c.SameHost(abs.String(), base) {
 			found = append(found, abs.String())
-			if c.RewriteURL && abs.RawQuery != "" {
-				abs = c.RewriteURLWithPolicy(abs)
-			}
 			fixPath(abs)
 			return fmt.Sprintf("url('%s')", c.ToRelative(abs, base))
 		}
@@ -85,9 +79,6 @@ func (c *Config) ProcessInlineStyle(style, currentURL, base string) (string, []s
 		}
 		if c.SameHost(abs.String(), base) {
 			found = append(found, abs.String())
-			if c.RewriteURL && abs.RawQuery != "" {
-				abs = c.RewriteURLWithPolicy(abs)
-			}
 			fixPath(abs)
 			return fmt.Sprintf("url('%s')", c.ToRelative(abs, base))
 		}

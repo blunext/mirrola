@@ -72,13 +72,6 @@ var unwantedTags = []unwantedTag{
 // URL schemes that should never be crawled
 var disallowedSchemes = map[string]bool{"mailto": true, "tel": true, "javascript": true, "data": true}
 
-// File extensions considered static assets (for query param baking logic)
-var staticAssetExts = map[string]bool{
-	".jpg": true, ".jpeg": true, ".png": true, ".gif": true, ".webp": true,
-	".svg": true, ".ico": true, ".css": true, ".js": true,
-	".woff": true, ".woff2": true, ".ttf": true, ".eot": true, ".otf": true, ".pdf": true,
-}
-
 // initRegexps compiles all regular expressions used for URL extraction
 func initRegexps() {
 	reCSSURL = regexp.MustCompile(`url\(\s*['"]?\s*([^'")]+?)\s*['"]?\s*\)`) // url('...') in CSS

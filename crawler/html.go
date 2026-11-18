@@ -261,9 +261,6 @@ func processHrefAttribute(node *html.Node, attr *html.Attribute, currentURL, bas
 		} else {
 			links = append(links, abs.String())
 		}
-		if cfg.RewriteURL && abs.RawQuery != "" {
-			abs = cfg.RewriteURLWithPolicy(abs)
-		}
 		fixPath(abs)
 		attr.Val = cfg.ToRelative(abs, base)
 	}
@@ -278,9 +275,6 @@ func processSrcAttribute(attr *html.Attribute, currentURL, base string) []string
 	abs, err := resolveURL(currentURL, orig)
 	if err == nil && cfg.SameHost(abs.String(), base) {
 		assets = append(assets, abs.String())
-		if cfg.RewriteURL && abs.RawQuery != "" {
-			abs = cfg.RewriteURLWithPolicy(abs)
-		}
 		fixPath(abs)
 		attr.Val = cfg.ToRelative(abs, base)
 	}
@@ -363,9 +357,6 @@ func processSourceElement(node *html.Node, currentURL, base string) []string {
 			abs, err := resolveURL(currentURL, attr.Val)
 			if err == nil && cfg.SameHost(abs.String(), base) {
 				assets = append(assets, abs.String())
-				if cfg.RewriteURL && abs.RawQuery != "" {
-					abs = cfg.RewriteURLWithPolicy(abs)
-				}
 				fixPath(abs)
 				attr.Val = cfg.ToRelative(abs, base)
 			}

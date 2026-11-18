@@ -10,9 +10,10 @@ import (
 )
 
 // outputRegistry remembers which source URL produced each output file, so that
-// two different URLs mapping to the same path (e.g. "łódź.jpg" and "lodz.jpg"
-// after transliteration, or "style.css?ver=1" and "?ver=2" without -rewrite)
-// are detected instead of silently overwriting each other.
+// two different URLs mapping to the same path are detected instead of silently
+// overwriting each other: "łódź.jpg" and "lodz.jpg" after transliteration, or
+// "style.css?ver=1" and "?ver=2" (the query is not part of the file name; a
+// static host serves both as one file).
 type outputRegistry struct {
 	mu         sync.Mutex
 	owners     map[string]string // output path -> canonical source URL

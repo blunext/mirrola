@@ -20,8 +20,7 @@ func TestConfig_ProcessInlineJS(t *testing.T) {
 		{
 			name: "Simple HTTP URL with escaped slashes",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			jsContent:     `var img = "https:\/\/example.com\/images\/photo.jpg";`,
 			currentURL:    "https://example.com/page",
@@ -32,8 +31,7 @@ func TestConfig_ProcessInlineJS(t *testing.T) {
 		{
 			name: "HTTPS URL with escaped slashes",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			jsContent:     `var url = "https:\/\/example.com\/assets\/script.js";`,
 			currentURL:    "https://example.com/page",
@@ -44,8 +42,7 @@ func TestConfig_ProcessInlineJS(t *testing.T) {
 		{
 			name: "Multiple URLs in one script",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			jsContent: `var img1 = "https:\/\/example.com\/img1.jpg";
 var img2 = "https:\/\/example.com\/img2.jpg";`,
@@ -61,8 +58,7 @@ var img2 = "\/img2.jpg";`,
 		{
 			name: "External URL - should not be modified",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			jsContent:     `var cdn = "https:\/\/cdn.example.com\/library.js";`,
 			currentURL:    "https://example.com/page",
@@ -73,8 +69,7 @@ var img2 = "\/img2.jpg";`,
 		{
 			name: "Unicode escapes \\u0026 (ampersand)",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			jsContent:     `var url = "https:\/\/example.com\/page?foo=1\u0026bar=2";`,
 			currentURL:    "https://example.com/page",
@@ -85,8 +80,7 @@ var img2 = "\/img2.jpg";`,
 		{
 			name: "Unicode escapes \\u002F (forward slash)",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			jsContent:     `var url = "https:\u002F\u002Fexample.com\u002Fimage.png";`,
 			currentURL:    "https://example.com/page",
@@ -95,22 +89,9 @@ var img2 = "\/img2.jpg";`,
 			expectedFound: []string{"https://example.com/image.png"},
 		},
 		{
-			name: "Query parameters with rewrite enabled",
-			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: true,
-			},
-			jsContent:     `var img = "https:\/\/example.com\/photo.jpg?v=1.0";`,
-			currentURL:    "https://example.com/page",
-			baseURL:       "https://example.com",
-			expectedJS:    `var img = "\/photo_v_1.0.jpg";`,
-			expectedFound: []string{"https://example.com/photo.jpg?v=1.0"},
-		},
-		{
 			name: "Simple Lightbox specific pattern",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			jsContent: `(function(){
 var slb_url = "https:\/\/example.com\/wp-content\/uploads\/image.jpg";
@@ -125,8 +106,7 @@ var slb_url = "\/wp-content\/uploads\/image.jpg";
 		{
 			name: "Mixed escaped and unescaped slashes",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			jsContent:     `var url = "https:\/\/example.com/images/photo.jpg";`,
 			currentURL:    "https://example.com/page",
@@ -137,8 +117,7 @@ var slb_url = "\/wp-content\/uploads\/image.jpg";
 		{
 			name: "Polish characters in URL",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			jsContent:     `var img = "https:\/\/example.com\/zdjęcia\/łódź.jpg";`,
 			currentURL:    "https://example.com/page",
@@ -149,8 +128,7 @@ var slb_url = "\/wp-content\/uploads\/image.jpg";
 		{
 			name: "No URLs in JS",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			jsContent:     `var x = 5; console.log("Hello World");`,
 			currentURL:    "https://example.com/page",
@@ -161,8 +139,7 @@ var slb_url = "\/wp-content\/uploads\/image.jpg";
 		{
 			name: "HTTP (not HTTPS) URL",
 			config: Config{
-				BaseURL:    "http://example.com",
-				RewriteURL: false,
+				BaseURL: "http://example.com",
 			},
 			jsContent:     `var img = "http:\/\/example.com\/image.png";`,
 			currentURL:    "http://example.com/page",
@@ -258,8 +235,7 @@ func TestConfig_ProcessInlineJS_EdgeCases(t *testing.T) {
 		{
 			name: "Empty JavaScript",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			jsContent:     "",
 			currentURL:    "https://example.com/page",
@@ -270,8 +246,7 @@ func TestConfig_ProcessInlineJS_EdgeCases(t *testing.T) {
 		{
 			name: "Malformed URL - missing protocol",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			jsContent:     `var url = "example.com/image.jpg";`,
 			currentURL:    "https://example.com/page",
@@ -282,8 +257,7 @@ func TestConfig_ProcessInlineJS_EdgeCases(t *testing.T) {
 		{
 			name: "URL in comment - should not be processed",
 			config: Config{
-				BaseURL:    "https://example.com",
-				RewriteURL: false,
+				BaseURL: "https://example.com",
 			},
 			jsContent:     `// https://example.com/image.jpg`,
 			currentURL:    "https://example.com/page",

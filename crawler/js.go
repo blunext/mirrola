@@ -22,9 +22,6 @@ func (c *Config) ProcessInlineJS(jsContent, currentURL, base string) (string, []
 		}
 		if c.SameHost(abs.String(), base) {
 			found = append(found, abs.String())
-			if c.RewriteURL && abs.RawQuery != "" {
-				abs = c.RewriteURLWithPolicy(abs)
-			}
 			fixPath(abs)
 			rel := c.ToRelative(abs, base)
 			// Re-escape slashes for JS strings
