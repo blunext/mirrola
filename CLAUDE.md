@@ -70,7 +70,7 @@ go test ./crawler -coverprofile=crawler/cover.out && go tool cover -html=crawler
 
 ## WordPress side (`wordpress/`)
 
-- `docker-compose.yml` runs MariaDB 10.6, `wordpress:6.7.1-php8.3-apache` on `:8000`, and phpMyAdmin on `:8080`, with credentials from `wordpress/.env` (gitignored). `./public_html` is bind-mounted as `/var/www/html`.
+- `docker-compose.yml` runs MariaDB 10.6, `wordpress:6.7.1-php8.3-apache` on `:8000` (Apache listens on 8000 *inside* the container too, `wordpress/apache/*.conf`: WordPress requests its own address `http://localhost:8000` from inside the container, Simple Lightbox fetches its `layout.html` and WP-Cron spawns itself this way; with Apache on 80 these failed silently and 31 gallery pages lost the lightbox layout), and phpMyAdmin on `:8080`, with credentials from `wordpress/.env` (gitignored). `./public_html` is bind-mounted as `/var/www/html`.
   - Only `wp-config.php` and `.htaccess` are tracked from `public_html`. The rest comes from the hosting tarball.
   - **No secrets in git** (this repo is public). `wp-config.php` reads DB credentials and the 8 keys/salts with `olamundo_env()` (`getenv`, dies with "Missing environment variable X" when unset). Values live only in `wordpress/.env`; `.env.example` lists the names. Compose passes them to `wordpress` and `wpcli` through the `x-wp-env` anchor with `${VAR:?}`, so a missing value stops compose. Local salts are random, not production's (until 2026-11-18 the committed wp-config.php held the production salts; they were rotated on the host).
 - `wordpress/README.md` covers fetching files and the DB dump from the host (`ssh om`, tar, mysqldump, scp) and importing the dump into the `db` container.

@@ -40,16 +40,18 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8000:80"
+      - "8000:8000"   # same port inside: see apache/ports.conf
     restart: always
     container_name: wordpress
     environment: *wp-env
     volumes:
       - ./public_html:/var/www/html
+      - ./apache/ports.conf:/etc/apache2/ports.conf:ro
+      - ./apache/000-default.conf:/etc/apache2/sites-available/000-default.conf:ro
     networks:
       - wordpress_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
       interval: 1m
       timeout: 10s
       retries: 3
