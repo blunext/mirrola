@@ -13,14 +13,16 @@ import (
 func main() {
 	// Define the -dir flag for specifying the directory to serve
 	dir := flag.String("dir", "./static", "the directory to serve")
+	port := flag.Int("port", 8080, "port to listen on")
 	flag.Parse()
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		serveFile(w, r, *dir)
 	})
 
-	fmt.Println("Server is starting on port :8080...")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	addr := fmt.Sprintf(":%d", *port)
+	fmt.Printf("Serving %s on http://localhost%s\n", *dir, addr)
+	log.Fatal(http.ListenAndServe(addr, nil))
 }
 
 func serveFile(w http.ResponseWriter, r *http.Request, baseDir string) {
