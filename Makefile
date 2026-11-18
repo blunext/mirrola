@@ -7,8 +7,8 @@
 
 URL         ?= https://olamundo.pl
 DIR         ?= $(HOME)/priv/olamundo
-DELAY       ?= 1
-CONCURRENCY ?= 4
+DELAY       ?= 0
+CONCURRENCY ?= 10
 PORT        ?= 8081
 STRICT      ?=
 

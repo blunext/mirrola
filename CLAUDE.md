@@ -12,7 +12,7 @@ Mirrola turns a self-managed WordPress blog (production domain `olamundo.pl`, ho
 ## Commands
 
 ```bash
-make crawl                                    # crawl https://olamundo.pl into ~/priv/olamundo (DELAY=1, CONCURRENCY=4)
+make crawl                                    # crawl https://olamundo.pl into ~/priv/olamundo (DELAY=0, CONCURRENCY=10; full site ~10 min)
 make serve                                    # preview ~/priv/olamundo on :8081 (8080 is phpMyAdmin)
 make crawl URL=http://localhost:8000 DELAY=0  # crawl the local Docker WordPress; DIR=, STRICT=1 also work
 
