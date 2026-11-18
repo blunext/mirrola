@@ -14,22 +14,35 @@
  * @package WordPress
  */
 
+/**
+ * Secrets come from the environment (wordpress/.env locally, see .env.example),
+ * never from this file: it is in a public git repository.
+ */
+function olamundo_env($name) {
+	$value = getenv($name);
+	if ($value === false || $value === "") {
+		http_response_code(500);
+		die("Missing environment variable $name (see wordpress/.env.example)\n");
+	}
+	return $value;
+}
+
 // ** MySQL settings - You can get this info from your web host ** //
 /** The name of the database for WordPress */
 // define('WP_CACHE', true); //Added by WP-Cache Manager
 // define( 'WPCACHEHOME', '/home/olamundo/domains/olamundo.pl/public_html/wp-content/plugins/wp-super-cache/' ); //Added by WP-Cache Manager
 
-define('DB_NAME', 'wordpress');
+define('DB_NAME', olamundo_env('WORDPRESS_DB_NAME'));
 
 /** MySQL database username */
-define('DB_USER', 'wordpress');
+define('DB_USER', olamundo_env('WORDPRESS_DB_USER'));
 
 
 /** MySQL database password */
-define('DB_PASSWORD', 'wordpress');
+define('DB_PASSWORD', olamundo_env('WORDPRESS_DB_PASSWORD'));
 
 /** MySQL hostname */
-define('DB_HOST', getenv('WORDPRESS_DB_HOST'));
+define('DB_HOST', olamundo_env('WORDPRESS_DB_HOST'));
 
 /** Database Charset to use in creating database tables. */
 define('DB_CHARSET', 'utf8');
@@ -51,14 +64,14 @@ define('DB_COLLATE', '');
  *
  * @since 2.6.0
  */
-define('AUTH_KEY',         'y16Joy2FP0fcTnvnC7kVwQGWKc5W0WbouFK2fhNv7uFCHJ6srl8px6yOdWX4M5Vg');
-define('SECURE_AUTH_KEY',  'pzxmgRKoiixAb5VqcXTMeoxmE79NPJm3QOBI1JDC06AmkyuVCbWw1lBGRohuEnfY');
-define('LOGGED_IN_KEY',    'SrWpRGkgngYY3KL0zE9qNzWPamRQEz1CTJ8iveznr0Vjofj00kQMSfruRdGsDw5b');
-define('NONCE_KEY',        'EjWPke8c9yKWxSM1MYRjtltUbJFY4MPcnF657OtJpwISuo3meD7hDnmTrBdttiU7');
-define('AUTH_SALT',        'uIVP13QA5oI2Tv8JOmZqCBzDWk5033AgG8l83fhgCtRAkJ14ze1K682mNHTteldv');
-define('SECURE_AUTH_SALT', 'pXAQp1PS6HvPxMbhlETP5zpnxXteW9cv3GXIyW2AsFpI5nJbB3zgYaHIv6O1KVAu');
-define('LOGGED_IN_SALT',   'omYrBIvKP4MMOtvXVXNZxbOjWXfBcLmVLfcMd6wxSl0F7TGyHATwlm8bc80p4uYX');
-define('NONCE_SALT',       'DliXlSaw3JZuKX1Q7eBoJSfTpCWypa5tE4ur5l8SGPvVknp6Fc0gbAEoQjEz9rAV');
+define('AUTH_KEY',         olamundo_env('WORDPRESS_AUTH_KEY'));
+define('SECURE_AUTH_KEY',  olamundo_env('WORDPRESS_SECURE_AUTH_KEY'));
+define('LOGGED_IN_KEY',    olamundo_env('WORDPRESS_LOGGED_IN_KEY'));
+define('NONCE_KEY',        olamundo_env('WORDPRESS_NONCE_KEY'));
+define('AUTH_SALT',        olamundo_env('WORDPRESS_AUTH_SALT'));
+define('SECURE_AUTH_SALT', olamundo_env('WORDPRESS_SECURE_AUTH_SALT'));
+define('LOGGED_IN_SALT',   olamundo_env('WORDPRESS_LOGGED_IN_SALT'));
+define('NONCE_SALT',       olamundo_env('WORDPRESS_NONCE_SALT'));
 
 /**
  * Other customizations.

@@ -1,3 +1,19 @@
+# Environment shared by wordpress and wpcli (both load wp-config.php, which
+# takes every secret from here). ":?" stops compose when .env lacks a value.
+x-wp-env: &wp-env
+  WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST:?set in .env}
+  WORDPRESS_DB_USER: ${WORDPRESS_DB_USER:?set in .env}
+  WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD:?set in .env}
+  WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME:?set in .env}
+  WORDPRESS_AUTH_KEY: ${WORDPRESS_AUTH_KEY:?set in .env}
+  WORDPRESS_SECURE_AUTH_KEY: ${WORDPRESS_SECURE_AUTH_KEY:?set in .env}
+  WORDPRESS_LOGGED_IN_KEY: ${WORDPRESS_LOGGED_IN_KEY:?set in .env}
+  WORDPRESS_NONCE_KEY: ${WORDPRESS_NONCE_KEY:?set in .env}
+  WORDPRESS_AUTH_SALT: ${WORDPRESS_AUTH_SALT:?set in .env}
+  WORDPRESS_SECURE_AUTH_SALT: ${WORDPRESS_SECURE_AUTH_SALT:?set in .env}
+  WORDPRESS_LOGGED_IN_SALT: ${WORDPRESS_LOGGED_IN_SALT:?set in .env}
+  WORDPRESS_NONCE_SALT: ${WORDPRESS_NONCE_SALT:?set in .env}
+
 services:
   db:
     image: mariadb:10.6
@@ -27,11 +43,7 @@ services:
       - "8000:80"
     restart: always
     container_name: wordpress
-    environment:
-      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST}
-      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
-      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
-      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
+    environment: *wp-env
     volumes:
       - ./public_html:/var/www/html
     networks:
@@ -69,11 +81,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    environment:
-      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST}
-      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
-      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
-      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
+    environment: *wp-env
     volumes:
       - ./public_html:/var/www/html
     networks:

@@ -1,6 +1,8 @@
 # Lokalny WordPress (kopia olamundo.pl)
 
-Strona: http://localhost:8000, phpMyAdmin: http://localhost:8080. Hasła w `.env`.
+Strona: http://localhost:8000, phpMyAdmin: http://localhost:8080.
+
+Hasła do bazy oraz klucze i salty WordPressa są tylko w `.env` (poza gitem). Wzór z listą zmiennych: `.env.example`; salty to 8 losowych ciągów, np. `openssl rand -base64 48`. `wp-config.php` czyta je przez `getenv`, a przy braku zmiennej zatrzymuje się z komunikatem.
 
 Kroki 1–4 robi automatycznie `make sync` w katalogu repo (`./sync-from-host.sh`).
 `make sync-skip` (`--skip-download`) używa już pobranych plików.
@@ -26,7 +28,7 @@ scp om:wordpress_db.sql om:wordpress.tar.gz .
 
 ## 2. Rozpakowanie
 
-Bez `wp-config.php` i `.htaccess`, bo lokalne wersje są w gicie. Lokalny `wp-config.php` łączy się z kontenerem `db` i zapisuje błędy PHP do `wp-content/debug.log` zamiast na stronę.
+Bez `wp-config.php` i `.htaccess`, bo lokalne wersje są w gicie. Lokalny `wp-config.php` bierze dane bazy i salty z `.env` i zapisuje błędy PHP do `wp-content/debug.log` zamiast na stronę.
 
 ```bash
 tar -xzf wordpress.tar.gz --exclude='./public_html/wp-config.php' --exclude='./public_html/.htaccess'
