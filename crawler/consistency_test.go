@@ -53,6 +53,7 @@ func TestLinkMatchesWrittenFile(t *testing.T) {
 		{"all polish letters", "/ąćęłńóśźż-ĄĆĘŁŃÓŚŹŻ.jpg", "image/jpeg"},
 		{"en dash kept as is", "/wp-content/uploads/2014/12/caravaggio-–-wieczerza.jpg", "image/jpeg"},
 		{"space in name", "/uploads/my photo.jpg", "image/jpeg"},
+		{"markup and URL syntax in decoded path", "/x%22%27%3C%3E%28%29%60%5C%25%3F%23y.jpg", "image/jpeg"},
 		{"css with version query", "/wp-content/themes/t/style.css?ver=6.7", "text/css"},
 		{"page with trailing slash", "/2020/04/wpis-o-niedźwiedziu/", "text/html"},
 		{"page without trailing slash", "/o-mnie", "text/html"},
@@ -231,4 +232,33 @@ func TestGetOutputPath_StaysInOutputDir(t *testing.T) {
 				"%s (%s) escaped OutputDir: %s", l, ct, got)
 		}
 	}
+}
+
+// TestLinkInjection: characters decoded from the source URL must not come back
+// raw into the HTML/CSS/JS the link is written into (XSS via a crafted link,
+// e.g. in a comment). They are percent-encoded instead.
+func TestLinkInjection(t *testing.T) {
+	c := Config{BaseURL: "https://example.com"}
+	c.InitRegexps()
+	const page = "https://example.com/p/"
+	unsafe := "\"'<>`\\()"
+
+	js, _ := c.ProcessInlineJS(`{"source":"https:\/\/example.com\/a\u0022\u003c\/script\u003e\u003cimg\/src=x\/onerror=alert(1)\u003e.jpg"}`, page, c.BaseURL)
+	src := js[len(`{"source":"`) : len(js)-len(`"}`)]
+	assert.NotContains(t, src, `"`, "JS string must not be terminated by the link: %s", js)
+	assert.NotContains(t, src, "<", js)
+
+	css, _ := c.ProcessInlineCSS(`a{background:url('https://example.com/x%27%29%3C/style%3E%3Cscript%3Ealert%281%29%3C/script%3E.png')}`, page, c.BaseURL)
+	assert.False(t, strings.ContainsAny(css, "<>\""), "CSS must not get raw markup back: %s", css)
+	assert.Equal(t, 2, strings.Count(css, "'"), "only the url('...') quotes may remain: %s", css)
+
+	ext := c.ToRelative(mustParse(t, "https://other.com/a?q=%22%3C"), c.BaseURL)
+	assert.False(t, strings.ContainsAny(ext, unsafe), ext)
+}
+
+func mustParse(t *testing.T, s string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(s)
+	require.NoError(t, err)
+	return u
 }

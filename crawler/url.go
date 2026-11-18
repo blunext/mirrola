@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"fmt"
 	"net/url"
 	"path"
 	"strings"
@@ -75,17 +76,43 @@ func (c *Config) ToRelative(abs *url.URL, base string) string {
 		return abs.String()
 	}
 	if !strings.EqualFold(abs.Host, b.Host) {
-		return abs.String() // Keep external URLs absolute
+		return escapeLink(abs.String(), false) // Keep external URLs absolute
 	}
 
 	// Use the same path normalization as GetOutputPath, so the link always
 	// points at the file that was actually written (transliterated).
-	pathStr := c.normalizePath(abs.Path)
+	// abs.Path is decoded, so escape whatever would change its meaning in a
+	// URL (%, ?, #) or break out of the HTML/CSS/JS context the link is
+	// written into. Servers decode the link, so it still hits the same file.
+	pathStr := escapeLink(c.normalizePath(abs.Path), true)
 
 	if abs.RawQuery != "" {
-		return pathStr + "?" + abs.RawQuery
+		return pathStr + "?" + escapeLink(abs.RawQuery, false)
 	}
 	return pathStr
+}
+
+// escapeLink percent-encodes characters that are unsafe in a link written
+// into HTML attributes, CSS url('...') or JS strings: quotes, <, >, \,
+// backtick, parentheses, whitespace, control characters and U+2028/U+2029
+// (line terminators in JS). With decodedPath it also encodes %, ? and #,
+// which in a decoded path are literal characters, not URL syntax. Other
+// non-ASCII characters are kept as is.
+func escapeLink(s string, decodedPath bool) string {
+	var b strings.Builder
+	for _, r := range s {
+		unsafe := r <= 0x20 || r == 0x7f || r == 0x2028 || r == 0x2029 ||
+			strings.ContainsRune("\"'<>\\`()", r) ||
+			(decodedPath && strings.ContainsRune("%?#", r))
+		if !unsafe {
+			b.WriteRune(r)
+			continue
+		}
+		for _, c := range []byte(string(r)) {
+			fmt.Fprintf(&b, "%%%02X", c)
+		}
+	}
+	return b.String()
 }
 
 // SameHost checks if two URLs have the same host (case-insensitive)
