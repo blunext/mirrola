@@ -25,7 +25,7 @@ func (c *Config) ProcessInlineJS(jsContent, currentURL, base string) (string, []
 		if err != nil || !c.SameHost(abs.String(), base) {
 			return match
 		}
-		found = append(found, abs.String())
+		found = append(found, urlKey(abs))
 		fixPath(abs)
 		rel := c.ToRelative(abs, base)
 		// Keep the original style: JSON-escaped URLs get escaped slashes back.

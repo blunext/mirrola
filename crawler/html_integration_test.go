@@ -136,3 +136,49 @@ func TestHTMLProcessing_WordPressCleanup(t *testing.T) {
 	// Verify content remains
 	assert.Contains(t, savedStr, "<h1>Content</h1>")
 }
+
+// TestHTMLProcessing_Fragments: fragments must survive rewriting (footnotes
+// like <a href="#_ftn1"> on olamundo.pl), fragment-only references must be
+// left as written, and nothing fetched may carry a fragment.
+func TestHTMLProcessing_Fragments(t *testing.T) {
+	cfg = &Config{BaseURL: "https://example.com", OutputDir: t.TempDir()}
+	cfg.InitRegexps()
+
+	page := `<html><head><style>.a{clip-path:url(#clip);background:url('/bg.png#x')}</style></head><body>` +
+		`<a href="#_ftn1" name="_ftnref1">[1]</a>` +
+		`<a href="#" id="close-canvas-nav">x</a>` +
+		`<a href="/post/#comments">c</a>` +
+		`<a href="https://example.com/other/#top">o</a>` +
+		`<a href="https://example.com">home</a>` +
+		`<a href="https://example.com#top">home top</a>` +
+		`<svg><use href="#icon"></use></svg>` +
+		`<script id="slb_context">var x = {"u":"https:\/\/example.com\/g\/#s"};</script>` +
+		`</body></html>`
+	assets, links, err := processHTML(context.Background(), "https://example.com/post/", []byte(page))
+	require.NoError(t, err)
+
+	out, err := os.ReadFile(filepath.Join(cfg.OutputDir, "post", "index.html"))
+	require.NoError(t, err)
+	got := string(out)
+	for _, want := range []string{
+		`href="#_ftn1"`,
+		`href="#" id="close-canvas-nav"`,
+		`href="/post/#comments"`,
+		`href="/other/#top"`,
+		`href="/">home</a>`,
+		`href="/#top"`,
+		`<use href="#icon">`,
+		`url(#clip)`,
+		`url('/bg.png#x')`,
+		`"u":"\/g\/#s"`,
+	} {
+		assert.Contains(t, got, want)
+	}
+	assert.NotContains(t, got, `href=""`)
+
+	for _, u := range append(append([]string{}, assets...), links...) {
+		assert.NotContains(t, u, "#", "fetched URLs carry no fragment: %s", u)
+	}
+	assert.Contains(t, links, "https://example.com/other/")
+	assert.Contains(t, assets, "https://example.com/bg.png")
+}

@@ -25,13 +25,13 @@ func TestURL_EdgeCases(t *testing.T) {
 			name:       "Fragment only",
 			currentURL: "https://example.com/page",
 			link:       "#section1",
-			expected:   "https://example.com/page", // Fragments are stripped in normalize
+			expected:   "https://example.com/page#section1", // kept for the rewritten link; urlKey drops it
 		},
 		{
 			name:       "Fragment with path",
 			currentURL: "https://example.com/page",
 			link:       "other#section2",
-			expected:   "https://example.com/other",
+			expected:   "https://example.com/other#section2",
 		},
 		{
 			name:       "Unicode in path",

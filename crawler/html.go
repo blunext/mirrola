@@ -261,12 +261,15 @@ func processHrefAttribute(node *html.Node, attr *html.Attribute, currentURL, bas
 	}
 
 	orig := attr.Val
+	if isFragmentOnly(orig) {
+		return nil, nil
+	}
 	abs, err := resolveURL(currentURL, orig)
 	if err == nil && cfg.SameHost(abs.String(), base) {
 		if isAsset {
-			assets = append(assets, abs.String())
+			assets = append(assets, urlKey(abs))
 		} else {
-			links = append(links, abs.String())
+			links = append(links, urlKey(abs))
 		}
 		fixPath(abs)
 		attr.Val = cfg.ToRelative(abs, base)
@@ -279,9 +282,12 @@ func processSrcAttribute(attr *html.Attribute, currentURL, base string) []string
 	var assets []string
 
 	orig := attr.Val
+	if isFragmentOnly(orig) {
+		return nil
+	}
 	abs, err := resolveURL(currentURL, orig)
 	if err == nil && cfg.SameHost(abs.String(), base) {
-		assets = append(assets, abs.String())
+		assets = append(assets, urlKey(abs))
 		fixPath(abs)
 		attr.Val = cfg.ToRelative(abs, base)
 	}

@@ -59,7 +59,26 @@ func resolveURL(currentURL, link string) (*url.URL, error) {
 	if strings.EqualFold(abs.Host, base.Host) {
 		abs.Scheme = base.Scheme
 	}
-	return normalize(abs), nil
+	// normalize drops the fragment (it is not part of what is fetched), but
+	// the rewritten link must keep it: #_ftn1 footnotes, /post/#comments.
+	frag, rawFrag := abs.Fragment, abs.RawFragment
+	abs = normalize(abs)
+	abs.Fragment, abs.RawFragment = frag, rawFrag
+	return abs, nil
+}
+
+// urlKey returns u without its fragment: the resource that is fetched and
+// saved, used for enqueueing and reporting.
+func urlKey(u *url.URL) string {
+	k := *u
+	k.Fragment, k.RawFragment = "", ""
+	return k.String()
+}
+
+// isFragmentOnly reports a same-document reference such as "#top" or "#".
+// It is left exactly as written: there is nothing to fetch or rewrite.
+func isFragmentOnly(ref string) bool {
+	return strings.HasPrefix(strings.TrimSpace(ref), "#")
 }
 
 // fixPath clears RawPath to force URL encoding based on Path field
@@ -85,9 +104,15 @@ func (c *Config) ToRelative(abs *url.URL, base string) string {
 	// URL (%, ?, #) or break out of the HTML/CSS/JS context the link is
 	// written into. Servers decode the link, so it still hits the same file.
 	pathStr := escapeLink(c.normalizePath(abs.Path), true)
+	if pathStr == "" {
+		pathStr = "/" // https://host is the root, not an empty (same-page) link
+	}
 
 	if abs.RawQuery != "" {
-		return pathStr + "?" + escapeLink(abs.RawQuery, false)
+		pathStr += "?" + escapeLink(abs.RawQuery, false)
+	}
+	if abs.Fragment != "" {
+		pathStr += "#" + escapeLink(abs.EscapedFragment(), false)
 	}
 	return pathStr
 }

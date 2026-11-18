@@ -43,6 +43,7 @@ go test ./crawler -coverprofile=crawler/cover.out && go tool cover -html=crawler
 - **`filterDocument`** removes the configured `unwantedTags` (shortlink, pingback, EditURI, oEmbed, wp-json), Cloudflare challenge scripts, comment-reply, WP emoji JS and CSS, and all HTML comments. Extend `unwantedTags` / `shouldRemoveScript` / `shouldRemoveStyle` to strip more.
 - **Link rewriting:**
   - Same-host URLs become root-relative paths (`ToRelative`). External hosts stay absolute.
+  - Fragments are kept in the written link (`resolveURL` preserves them; `urlKey` drops them for fetching/enqueueing). Fragment-only references (`#_ftn1`, `#`, `url(#clip)`) are left exactly as written (`isFragmentOnly`).
   - Rewriting covers `href`, `src`, `srcset`, inline `style`, `<style>`, `<source>`, and inline `<script>`.
   - Inline JS handling targets JSON-escaped `https:\/\/…` URLs (Simple Lightbox plugin) and re-escapes slashes after rewriting.
 - **Output paths (`filesystem.go` `GetOutputPath`):**

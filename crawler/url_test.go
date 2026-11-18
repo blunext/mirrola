@@ -66,11 +66,11 @@ func TestConfig_ToRelative(t *testing.T) {
 			expected: "/image.png",
 		},
 		{
-			name:     "With fragment - fragment not in result",
+			name:     "With fragment - fragment kept in link",
 			config:   Config{},
 			absURL:   "https://example.com/page#section",
 			baseURL:  "https://example.com",
-			expected: "/page",
+			expected: "/page#section",
 		},
 		{
 			name:     "Subdomain - different host",

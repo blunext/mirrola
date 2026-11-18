@@ -19,14 +19,14 @@ func (c *Config) rewriteCSSURLs(css, docURL, base string) (string, []string) {
 			return m
 		}
 		orig := urls[1]
-		if strings.HasPrefix(orig, "data:") {
-			return m
+		if strings.HasPrefix(orig, "data:") || isFragmentOnly(orig) {
+			return m // url(#clip) refers to the same document
 		}
 		abs, err := resolveURL(docURL, orig)
 		if err != nil || !c.SameHost(abs.String(), base) {
 			return m
 		}
-		found = append(found, abs.String())
+		found = append(found, urlKey(abs))
 		fixPath(abs)
 		return fmt.Sprintf("url('%s')", c.ToRelative(abs, base))
 	})

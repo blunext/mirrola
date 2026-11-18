@@ -28,7 +28,7 @@ func (c *Config) ProcessSrcSet(srcset string, currentURL, base string) (string, 
 			continue
 		}
 		if c.SameHost(abs.String(), base) {
-			found = append(found, abs.String())
+			found = append(found, urlKey(abs))
 			fixPath(abs)
 			rel := c.ToRelative(abs, base)
 			if desc != "" {
