@@ -61,6 +61,24 @@ services:
       timeout: 10s
       retries: 3
 
+  # WP-CLI for one-off commands (search-replace after an import). Not started by
+  # "docker compose up"; run it with: docker compose run --rm wpcli <args>
+  wpcli:
+    image: wordpress:cli-php8.3
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST}
+      WORDPRESS_DB_USER: ${WORDPRESS_DB_USER}
+      WORDPRESS_DB_PASSWORD: ${WORDPRESS_DB_PASSWORD}
+      WORDPRESS_DB_NAME: ${WORDPRESS_DB_NAME}
+    volumes:
+      - ./public_html:/var/www/html
+    networks:
+      - wordpress_network
+
 volumes:
   db_data:
   wordpress_data:

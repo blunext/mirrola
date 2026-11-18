@@ -30,7 +30,6 @@ make crawl URL=http://localhost:8000 DELAY=0  # crawl the local Docker WordPress
 go build -o mirrola .                         # build crawler CLI
 go run . -url https://olamundo.pl -dir ./static [-strict] [-delay 2] [-max-depth N] [-concurrency N]
 go run ./server -dir ./static [-port N]       # preview static output (default :8080) (dir → index.html, trailing-slash redirect)
-go run ./replace -input <dump.sql> -output <out.sql>   # rewrite prod URLs/paths in a SQL dump for local Docker
 
 go test ./...                                 # all tests live in crawler/
 go test ./crawler -run TestCrawler_BasicFlow  # single test
@@ -72,8 +71,8 @@ go test ./crawler -coverprofile=crawler/cover.out && go tool cover -html=crawler
   - Only `wp-config.php` and `.htaccess` are tracked from `public_html`. The rest comes from the hosting tarball.
   - `wp-config.php` has hardcoded values. It doesn't use `getenv_docker`.
 - `wordpress/README.md` covers fetching files and the DB dump from the host (`ssh om`, tar, mysqldump, scp) and importing the dump into the `db` container.
-- **Use `replace/` rather than plain `sed` for URL rewriting in the dump.** WordPress stores PHP-serialized strings (`s:<len>:"…";`), and `replace` recomputes their byte lengths. The README's `sed` lines would corrupt them.
-  - Rules in `replace/main.go` map `olamundo.pl` (http/https/www/upper-case/JSON-escaped) to `http://localhost:8000`, map the host filesystem path to `/var/www/html`, and map DB name `olamundo_wp1` to `wordpress`.
-  - Default `-input`/`-output` are absolute paths on the author's machine.
+- **URLs in the database are rewritten with WP-CLI `wp search-replace` after importing the original dump**, not in the `.sql` file. Use `docker compose run --rm wpcli …` (service `wpcli`, profile `tools`, not started by `up`). The steps are in `wordpress/README.md`. WordPress stores PHP-serialized strings (`s:<len>:"…";`), and WP-CLI unserializes, replaces and serializes them again.
+  - Tested 2026-11-18 on the 2024-12-30 dump in throwaway containers: 0 of 1898 serialized values unreadable after `search-replace`. The only warning was a skipped `GoogleSitemapGeneratorStatus` object, a plugin class not loaded. What still contains `olamundo.pl` is `guid` (skipped on purpose) and Wordfence `wp_wf*` tables.
+  - **`replace/` is kept but broken; don't use it on a dump.** It measures string lengths on the SQL-escaped text (backslashes counted twice) and rewrites every length, even where the text didn't change. On the same dump it left 1239 serialized values unreadable by PHP (1142 in `wp_postmeta`). `wordpress/wordpress.sql` is its output and is corrupted. `sed` on a dump breaks every serialized string it changes.
 - SQL dumps (`wordpress/*.sql*`) and the built `mirrola` binary are untracked artifacts. Don't commit them.
 - To mirror the local instance: `make crawl URL=http://localhost:8000` (DIR stays `~/priv/olamundo`, `SITE_URL` stays `https://olamundo.pl`). Links are root-relative, so the output does not depend on the source host. If the instance's `siteurl`/`home` still point to production, the crawl fails with an off-site redirect error.
