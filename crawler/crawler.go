@@ -278,7 +278,7 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 		}
 	}
 
-	resp, err := headOrGet(ctx, link)
+	resp, err := fetch(ctx, link)
 	if err != nil {
 		return err
 	}

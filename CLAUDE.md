@@ -55,7 +55,7 @@ go test ./crawler -coverprofile=crawler/cover.out && go tool cover -html=crawler
   - The query string is never part of the file name (static hosts ignore it); links keep it. A `-rewrite` mode that baked queries into file names existed but was removed: it computed file names and links with different rules (404s), and the site has no pages that differ only by query.
   - **Invariant:** the link from `ToRelative` must resolve to the file written by `GetOutputPath`. Both go through `normalizePath`; `TestLinkMatchesWrittenFile` (`consistency_test.go`) checks it the way a static host resolves links (decode path, drop query, dir → `index.html`).
   - **Collisions (`collisions.go`):** `claimOutput` records which URL produced each output path. The same resource in NFC/NFD form is skipped silently; a different URL on the same path (e.g. `łódź.jpg` vs `lodz.jpg`, or `?ver=1` vs `?ver=2`) logs `[WARN]` and keeps the first file, or aborts with `-strict`. A `Config` built without `NewConfigFromGlobals` has no registry and doesn't track.
-- **HTTP (`http.go`):** HEAD, then GET. On a 404 it retries with the path's Unicode normalization flipped (NFC↔NFD), because Polish characters in WordPress upload filenames are inconsistent. `writeFile` writes to a temp file, then renames it, and cleans up on failure.
+- **HTTP (`http.go` `fetch`):** one GET per URL (no HEAD: it used to precede every GET and its result was never used). On a 404 it retries once with the path's Unicode normalization flipped (NFC↔NFD), because Polish characters in WordPress upload filenames are inconsistent. `writeFile` writes to a temp file, then renames it, and cleans up on failure.
 
 ## WordPress side (`wordpress/`)
 

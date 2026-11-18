@@ -23,63 +23,42 @@ func doRequest(ctx context.Context, method, u string) (*http.Response, error) {
 	return client.Do(req)
 }
 
-// headOrGet fetches a URL using HEAD first (for efficiency), then GET.
-// On 404, tries Unicode normalization fallback (NFC ↔ NFD) for Polish/international chars.
-func headOrGet(ctx context.Context, u string) (*http.Response, error) {
-	try := func(targetURL string) (*http.Response, error) {
-		// Try HEAD first
-		resp, err := doRequest(ctx, http.MethodHead, targetURL)
-		if err != nil || resp.StatusCode >= 400 {
-			// HEAD failed or error status, try GET directly
-			if resp != nil {
-				resp.Body.Close()
-			}
-			return doRequest(ctx, http.MethodGet, targetURL)
-		}
-		// HEAD succeeded, close it and do GET to get the body
+// fetch GETs a URL. On a 404 it retries once with the path's Unicode
+// normalization flipped (NFC <-> NFD), because WordPress upload file names
+// with Polish characters are stored in either form; if that fails too, the
+// original 404 response is returned.
+//
+// There is deliberately no HEAD request first: one was added for "type
+// detection" (b06d4d5), but since a86d318 a GET always followed it and its
+// result was thrown away, so it only doubled the requests.
+func fetch(ctx context.Context, u string) (*http.Response, error) {
+	resp, err := doRequest(ctx, http.MethodGet, u)
+	if err != nil || resp.StatusCode != http.StatusNotFound {
+		return resp, err
+	}
+
+	parsed, perr := url.Parse(u)
+	if perr != nil {
+		return resp, nil
+	}
+	alt := norm.NFD.String(parsed.Path)
+	if norm.NFD.IsNormalString(parsed.Path) {
+		alt = norm.NFC.String(parsed.Path)
+	}
+	if alt == parsed.Path {
+		return resp, nil // nothing to flip (plain ASCII)
+	}
+	parsed.Path = alt
+	parsed.RawPath = "" // force re-encoding
+	resp2, err2 := doRequest(ctx, http.MethodGet, parsed.String())
+	if err2 == nil && resp2.StatusCode < 400 {
 		resp.Body.Close()
-		return doRequest(ctx, http.MethodGet, targetURL)
+		return resp2, nil
 	}
-
-	resp, err := try(u)
-
-	// If 404, try Unicode normalization fallback (handles servers that expect different normalization)
-	// This is crucial for Polish chars: ó can be NFC (U+00F3) or NFD (U+006F U+0301)
-	if err == nil && resp.StatusCode == 404 {
-		resp.Body.Close() // Close the 404 response
-
-		parsed, parseErr := url.Parse(u)
-		if parseErr == nil {
-			path := parsed.Path
-			var altPath string
-
-			// Check if we can flip normalization
-			if norm.NFC.IsNormalString(path) {
-				altPath = norm.NFD.String(path)
-			} else {
-				altPath = norm.NFC.String(path)
-			}
-
-			if altPath != path {
-				parsed.Path = altPath
-				parsed.RawPath = "" // Force re-encoding
-				altURL := parsed.String()
-
-				// fmt.Printf("[INFO] 404 for %s, trying fallback: %s\n", u, altURL)
-				resp2, err2 := try(altURL)
-				if err2 == nil && resp2.StatusCode < 400 {
-					return resp2, nil // Found it!
-				}
-				if resp2 != nil {
-					resp2.Body.Close()
-				}
-			}
-		}
-		// Fallback failed, re-request original URL to get valid response object
-		return try(u)
+	if resp2 != nil {
+		resp2.Body.Close()
 	}
-
-	return resp, err
+	return resp, nil // keep the original 404
 }
 
 // looksLikeHTML peeks at response body to detect HTML content when Content-Type header is missing

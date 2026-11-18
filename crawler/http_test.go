@@ -6,10 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"golang.org/x/text/unicode/norm"
 )
 
 func TestHTTP_EdgeCases(t *testing.T) {
@@ -53,14 +56,14 @@ func TestHTTP_EdgeCases(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("404 Error", func(t *testing.T) {
-		resp, err := headOrGet(ctx, ts.URL+"/404")
-		// headOrGet returns response even on 404
+		resp, err := fetch(ctx, ts.URL+"/404")
+		// fetch returns response even on 404
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 	})
 
 	t.Run("Timeout", func(t *testing.T) {
-		_, err := headOrGet(ctx, ts.URL+"/timeout")
+		_, err := fetch(ctx, ts.URL+"/timeout")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "Client.Timeout")
 	})
@@ -68,7 +71,7 @@ func TestHTTP_EdgeCases(t *testing.T) {
 	t.Run("Redirect", func(t *testing.T) {
 		// Reset timeout for redirect test
 		client.Timeout = 1 * time.Second
-		resp, err := headOrGet(ctx, ts.URL+"/redirect")
+		resp, err := fetch(ctx, ts.URL+"/redirect")
 		assert.NoError(t, err)
 		assert.Equal(t, http.StatusOK, resp.StatusCode)
 		// Verify we landed on target (req.URL might show it)
@@ -78,13 +81,13 @@ func TestHTTP_EdgeCases(t *testing.T) {
 	t.Run("Unicode Fallback NFC->NFD", func(t *testing.T) {
 		// Server has NFD resource: /unicode/o\u0301
 		// We request NFC: /unicode/ó
-		// headOrGet should try NFC (404) -> fallback to NFD (200)
+		// fetch should try NFC (404) -> fallback to NFD (200)
 
 		// Note: httptest server might normalize paths?
 		// Let's verify.
 
 		u := ts.URL + "/unicode/\u00F3" // NFC
-		resp, err := headOrGet(ctx, u)
+		resp, err := fetch(ctx, u)
 		assert.NoError(t, err)
 		if resp.StatusCode == 200 {
 			// It worked!
@@ -181,11 +184,65 @@ func TestHTTP_UnicodeFallback(t *testing.T) {
 
 	// Request NFC
 	u := ts.URL + "/unicode/\u00F3" // NFC
-	resp, err := headOrGet(ctx, u)
+	resp, err := fetch(ctx, u)
 
 	assert.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	body, _ := io.ReadAll(resp.Body)
 	assert.Equal(t, "Found NFD", string(body))
+}
+
+// TestFetch_RequestCount: one GET per URL, never HEAD; a 404 on a non-ASCII
+// path costs exactly one extra GET (the NFC/NFD retry), and the original 404
+// is returned with its body intact.
+func TestFetch_RequestCount(t *testing.T) {
+	var mu sync.Mutex
+	var seen []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		mu.Unlock()
+		switch r.URL.Path {
+		case "/ok.jpg":
+			w.Write([]byte("jpg"))
+		case norm.NFD.String("/łódź.jpg"):
+			w.Write([]byte("nfd"))
+		default:
+			http.Error(w, "missing", http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	client = ts.Client()
+	ua := "MirrolaTest/1.0"
+	userAgent = &ua
+	ctx := context.Background()
+
+	cases := []struct {
+		path      string
+		status    int
+		body      string
+		wantCalls []string
+	}{
+		{"/ok.jpg", 200, "jpg", []string{"GET /ok.jpg"}},
+		{"/gone.jpg", 404, "missing\n", []string{"GET /gone.jpg"}},
+		{"/łódź.jpg", 200, "nfd", []string{"GET /łódź.jpg", "GET " + norm.NFD.String("/łódź.jpg")}},
+		{"/żółw.jpg", 404, "missing\n", []string{"GET /żółw.jpg", "GET " + norm.NFD.String("/żółw.jpg")}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			mu.Lock()
+			seen = nil
+			mu.Unlock()
+			resp, err := fetch(ctx, ts.URL+tc.path)
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			body, _ := io.ReadAll(resp.Body)
+			assert.Equal(t, tc.status, resp.StatusCode)
+			assert.Equal(t, tc.body, string(body))
+			mu.Lock()
+			defer mu.Unlock()
+			assert.Equal(t, tc.wantCalls, seen)
+		})
+	}
 }
