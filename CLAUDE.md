@@ -9,6 +9,14 @@ Mirrola turns a self-managed WordPress blog (production domain `olamundo.pl`, ho
 1. **Static mirror → Cloudflare Pages.** Crawl the live site, rewrite every same-host link to a root-relative path, strip WordPress/Cloudflare cruft, and write a self-contained tree that can be deployed to Cloudflare Pages. This is what the Go crawler does.
 2. **Portable WordPress → crawl → publish.** Pull WordPress (files + DB) off the hosting provider and run it in Docker, either locally or on a public on-demand Docker host. New posts get written there, then the crawler mirrors that instance and the output goes to Pages. Only the local docker-compose part exists so far. On-demand hosting and the Pages deploy step are not in the repo yet.
 
+## Working rules
+
+- **Anything that deletes or may overwrite files runs in Docker, never on the host.** That covers `make clean-site` / `make crawl` with a real `DIR`, `find … rm`, and crawls into a real directory. Use `golang:1.25` (has go, make, git, find), mount this repo and `~/priv/olamundo` read-only (`:ro`), copy them inside, and put the test scenario in a script file. On the host, only `go build`, `go vet` and `make -n`. `~/priv/olamundo` is the live site repo, and the untracked SQL dumps in `wordpress/` cannot be restored by git.
+- **Commit only when the owner asks; never push.** Leave changes uncommitted and say so. A push to `~/priv/olamundo` deploys the site to Cloudflare Pages.
+- **Publishing stays manual:** `make crawl` → `make serve` (the owner checks locally) → `make publish`. Don't chain or automate these steps.
+- **Proving a fix:** a test that fails on the old code (run it in a `git worktree` of `HEAD`) plus a full crawl of the local copy (`go run ./server -dir ~/priv/olamundo`), comparing the old and new binary's output.
+- **The owner writes in Polish; reply in Polish.**
+
 ## Commands
 
 ```bash
@@ -68,4 +76,4 @@ go test ./crawler -coverprofile=crawler/cover.out && go tool cover -html=crawler
   - Rules in `replace/main.go` map `olamundo.pl` (http/https/www/upper-case/JSON-escaped) to `http://localhost:8000`, map the host filesystem path to `/var/www/html`, and map DB name `olamundo_wp1` to `wordpress`.
   - Default `-input`/`-output` are absolute paths on the author's machine.
 - SQL dumps (`wordpress/*.sql*`) and the built `mirrola` binary are untracked artifacts. Don't commit them.
-- To mirror the local instance, point the crawler at it, e.g. `go run . -url http://localhost:8000 -dir ./static`. The output is root-relative, so it doesn't depend on the source host.
+- To mirror the local instance: `make crawl URL=http://localhost:8000` (DIR stays `~/priv/olamundo`, `SITE_URL` stays `https://olamundo.pl`). Links are root-relative, so the output does not depend on the source host. If the instance's `siteurl`/`home` still point to production, the crawl fails with an off-site redirect error.
