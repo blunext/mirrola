@@ -2,3 +2,6 @@
 public_html/*
 !public_html/wp-config.php
 !public_html/.htaccess
+*.tar.gz
+*.sql
+*.sql.zip

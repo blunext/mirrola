@@ -2,11 +2,14 @@
 
 Strona: http://localhost:8000, phpMyAdmin: http://localhost:8080. Hasła w `.env`.
 
+Kroki 1–4 robi automatycznie `./sync-from-host.sh` (`--skip-download` używa już pobranych plików).
+Zastępuje lokalną bazę i pliki kopią z serwera.
+
 ## 1. Eksport z serwera
 
 ```bash
 ssh om
-tar -czf wordpress.tar.gz -C ~/domains/olamundo.pl --exclude='./public_html/wp-content/cache' ./public_html
+tar -czf wordpress.tar.gz -C ~/domains/olamundo.pl --exclude='./public_html/wp-content/cache' --exclude='./public_html/wp-content/wflogs' ./public_html
 tar -tzf wordpress.tar.gz | head -3      # ./public_html/...
 ls -lh wordpress.tar.gz
 grep DB_ ~/domains/olamundo.pl/public_html/wp-config.php
