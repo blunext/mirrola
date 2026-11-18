@@ -94,7 +94,7 @@ func TestCrawler_BasicFlow(t *testing.T) {
 	}
 
 	// Enqueue start URL
-	err := enqueueLink(ctx, ts.URL, 0, tasks)
+	err := enqueueLink(ctx, ts.URL, "", 0, tasks)
 	require.NoError(t, err)
 
 	// Wait for completion

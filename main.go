@@ -5,7 +5,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
 
 	"github.com/blunext/mirrola/crawler"
 )
@@ -17,7 +19,7 @@ func main() {
 	baseURL := flag.String("url", "", "Base URL to start crawling (required)")
 	outputDir := flag.String("dir", "./static", "Output directory")
 	rewriteURL := flag.Bool("rewrite", false, "Bake query params into filenames")
-	strict := flag.Bool("strict", false, "Fail when two different URLs map to the same output file (default: warn and keep the first)")
+	strict := flag.Bool("strict", false, "Fail on dead links (404/410) and on two URLs mapping to the same output file (default: warn and continue)")
 	userAgent := flag.String("ua", "StaticCrawler/1.0", "HTTP User-Agent")
 	timeoutSec := flag.Int("timeout", 20, "HTTP timeout in seconds")
 	delayBetweenRequests := flag.Float64("delay", 0, "Delay in seconds between requests (0 = no delay, e.g., 5 = wait 5 seconds)")
@@ -37,7 +39,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx := context.Background()
+	// Ctrl-C cancels the crawl: in-flight downloads are abandoned (no partial
+	// files are left, writes go through a temp file) and Run reports an error.
+	// After the first signal the default handler is restored, so a second
+	// Ctrl-C kills the process if shutdown ever stalls.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 	if err := crawler.Run(ctx); err != nil {
 		fmt.Printf("[ERROR] Crawling failed: %v\n", err)
 		os.Exit(1)

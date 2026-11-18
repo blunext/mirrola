@@ -48,6 +48,7 @@ var (
 // task represents a URL to crawl with its depth level
 type task struct {
 	url   string
+	from  string // page that linked to url (for dead-link reports)
 	depth int
 }
 
@@ -97,6 +98,7 @@ func initHTTPClient() {
 	}
 
 	// Initialize rate limiter if delay is enabled
+	limiter = nil
 	if *delayBetweenRequests > 0 {
 		// Convert delay to rate: delay of 5 seconds = 0.2 requests/second
 		requestsPerSecond := 1.0 / *delayBetweenRequests

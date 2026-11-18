@@ -2,13 +2,14 @@ package crawler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 )
 
 // --- Public API ---
@@ -16,6 +17,9 @@ import (
 // Init initializes the crawler with the given configuration.
 // This function must be called before Run().
 func Init(baseURL, outputDir string, rewriteURL, strict bool, ua string, timeout int, delay float64, queue, workers, depth int) error {
+	if workers < 1 {
+		return fmt.Errorf("concurrency must be at least 1, got %d", workers)
+	}
 	// Store flag values in global pointers
 	userAgent = &ua
 	timeoutSec = &timeout
@@ -25,6 +29,11 @@ func Init(baseURL, outputDir string, rewriteURL, strict bool, ua string, timeout
 	concurrency = workers
 	queueSize = queue
 	maxDepth = depth
+
+	// Reset per-run state so Init+Run can be called more than once (tests).
+	visited.Lock()
+	visited.m = make(map[string]bool)
+	visited.Unlock()
 
 	// Initialize global Config from flags
 	cfg = NewConfigFromGlobals(baseURL, outputDir, rewriteURL)
@@ -38,8 +47,14 @@ func Init(baseURL, outputDir string, rewriteURL, strict bool, ua string, timeout
 }
 
 // Run starts the crawler and blocks until all pages are downloaded or an error occurs.
-func Run(ctx context.Context) error {
-	ctx, cancel := context.WithCancel(ctx)
+//
+// Dead links (HTTP 404/410) are logged and listed in a summary but don't stop
+// the crawl, unless cfg.Strict is set. Any other failure (5xx, 403/429 from a
+// WAF, network or write errors) aborts the crawl and Run returns an error, so a
+// deploy script never publishes an incomplete mirror. Cancelling the parent
+// context (Ctrl-C) also returns an error.
+func Run(parent context.Context) error {
+	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 
 	fmt.Printf("Starting download for %s, workers: %d\n", cfg.BaseURL, concurrency)
@@ -52,12 +67,17 @@ func Run(ctx context.Context) error {
 
 	tasks := make(chan task, queueSize)
 
-	if err := enqueueLink(ctx, cfg.BaseURL, 0, tasks); err != nil {
+	if err := enqueueLink(ctx, cfg.BaseURL, "", 0, tasks); err != nil {
 		return fmt.Errorf("enqueue error: %w", err)
 	}
 
-	// Track first error encountered (fail-fast on critical errors)
-	var processError atomic.Value
+	// First fatal error wins; it cancels the crawl.
+	var (
+		fatalOnce sync.Once
+		fatalErr  error
+	)
+	var deadMu sync.Mutex
+	var deadLinks []string
 
 	// Goroutine to close task chan when all tasks are done
 	go func() {
@@ -82,12 +102,25 @@ func Run(ctx context.Context) error {
 					}
 					func() {
 						defer tasksWg.Done()
-						if err := processURL(ctx, t.url, t.depth, tasks); err != nil {
+						err := processURL(ctx, t.url, t.depth, tasks)
+						switch {
+						case err == nil:
+						case isDeadLink(err) && !cfg.Strict && t.from != "":
+							// A dead start URL is fatal (falls through to default):
+							// otherwise Run would succeed with an empty mirror.
+							line := fmt.Sprintf("%s (%v), linked from %s", t.url, err, t.from)
+							fmt.Printf("[WARN] dead link: %s\n", line)
+							deadMu.Lock()
+							deadLinks = append(deadLinks, line)
+							deadMu.Unlock()
+						case ctx.Err() != nil:
+							// Already shutting down; errors here are fallout of the cancel.
+						default:
 							fmt.Printf("[ERROR] %s: %v\n", t.url, err)
-							if processError.Load() == nil {
-								processError.Store(err)
+							fatalOnce.Do(func() {
+								fatalErr = fmt.Errorf("%s: %w", t.url, err)
 								cancel()
-							}
+							})
 						}
 					}()
 				}
@@ -96,24 +129,58 @@ func Run(ctx context.Context) error {
 	}
 
 	workersWg.Wait()
+	// After a cancel, tasks still queued (or being handed off by enqueueLink)
+	// were never processed. Account for them so tasksWg reaches zero, the
+	// closer goroutine above exits and closes the channel, and a later Run
+	// starts clean. On normal completion the channel is already closed.
+	for range tasks {
+		tasksWg.Done()
+	}
+
 	if c := cfg.Collisions(); len(c) > 0 {
 		fmt.Printf("[WARN] %d output collision(s); only the first URL was saved for each:\n", len(c))
 		for _, line := range c {
 			fmt.Printf("  - %s\n", line)
 		}
 	}
-	if err, ok := processError.Load().(error); ok && err != nil {
-		return fmt.Errorf("processing failed: %w", err)
+	if len(deadLinks) > 0 {
+		sort.Strings(deadLinks)
+		fmt.Printf("[WARN] %d dead link(s) skipped (fix them in WordPress, or use -strict to fail):\n", len(deadLinks))
+		for _, line := range deadLinks {
+			fmt.Printf("  - %s\n", line)
+		}
 	}
-
+	if fatalErr != nil {
+		return fmt.Errorf("processing failed: %w", fatalErr)
+	}
+	if err := parent.Err(); err != nil {
+		return fmt.Errorf("crawl interrupted, output is incomplete: %w", err)
+	}
 	return nil
+}
+
+// httpStatusError is returned by processURL for a non-200 response.
+type httpStatusError struct {
+	Code   int
+	Status string
+}
+
+func (e *httpStatusError) Error() string { return "HTTP " + e.Status }
+
+// isDeadLink reports whether err means the URL doesn't exist on the site (a
+// broken link in content), as opposed to the server refusing or failing.
+func isDeadLink(err error) bool {
+	var se *httpStatusError
+	return errors.As(err, &se) && (se.Code == http.StatusNotFound || se.Code == http.StatusGone)
 }
 
 // --- Crawler logic ---
 
 // enqueueLink normalizes and queues a URL for processing if not already visited.
 // Respects max depth setting and filters out disallowed URL schemes (mailto, tel, etc.).
-func enqueueLink(ctx context.Context, link string, depth int, tasks chan<- task) error {
+// from is the page or stylesheet that referenced link ("" for the start URL);
+// it is only used to report where a dead link came from.
+func enqueueLink(ctx context.Context, link, from string, depth int, tasks chan<- task) error {
 	// Check max depth (0 = unlimited, 1 = current page only, etc.)
 	if maxDepth > 0 && depth >= maxDepth {
 		return nil // Skip URLs at or beyond max depth
@@ -141,11 +208,25 @@ func enqueueLink(ctx context.Context, link string, depth int, tasks chan<- task)
 
 	// Increment WaitGroup before enqueueing to track active tasks
 	tasksWg.Add(1)
+	t := task{url: link, from: from, depth: depth}
 	select {
 	case <-ctx.Done():
 		tasksWg.Done()
 		return ctx.Err()
-	case tasks <- task{url: link, depth: depth}:
+	case tasks <- t:
+		return nil
+	default:
+		// Queue full. Enqueueing is done by the workers themselves, so blocking
+		// here could deadlock the pool once every worker waits on a full
+		// queue. Hand the send off instead; tasksWg keeps the channel open
+		// until it lands.
+		go func() {
+			select {
+			case tasks <- t:
+			case <-ctx.Done():
+				tasksWg.Done()
+			}
+		}()
 		return nil
 	}
 }
@@ -160,7 +241,7 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d %s", resp.StatusCode, resp.Status)
+		return &httpStatusError{Code: resp.StatusCode, Status: resp.Status}
 	}
 
 	ct := strings.ToLower(resp.Header.Get("Content-Type"))
@@ -195,13 +276,13 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 		}
 		// Assets inherit current depth (they are part of the page)
 		for _, a := range assets {
-			if err := enqueueLink(ctx, a, depth, tasks); err != nil {
+			if err := enqueueLink(ctx, a, link, depth, tasks); err != nil {
 				fmt.Printf("[ERROR] Failed to enqueue asset %s: %v\n", a, err)
 			}
 		}
 		// Links increase depth
 		for _, l := range links {
-			if err := enqueueLink(ctx, l, depth+1, tasks); err != nil {
+			if err := enqueueLink(ctx, l, link, depth+1, tasks); err != nil {
 				fmt.Printf("[ERROR] Failed to enqueue link %s: %v\n", l, err)
 			}
 		}
@@ -216,7 +297,7 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 		newCSS, found := cfg.ProcessCSSFile(css, link, cfg.BaseURL)
 		// CSS assets also inherit current depth
 		for _, l := range found {
-			if err := enqueueLink(ctx, l, depth, tasks); err != nil {
+			if err := enqueueLink(ctx, l, link, depth, tasks); err != nil {
 				fmt.Printf("[ERROR] Failed to enqueue CSS link %s: %v\n", l, err)
 			}
 		}
