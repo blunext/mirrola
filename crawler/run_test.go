@@ -283,8 +283,8 @@ func TestRun_DelayThrottlesPageRequests(t *testing.T) {
 
 	var starts []time.Time
 	for p, at := range firstHit {
-		if p == "/" || !strings.HasSuffix(p, "/") {
-			continue
+		if p == "/" || p == notFoundPath || !strings.HasSuffix(p, "/") {
+			continue // the 404 probe is throttled too, but it is not one of the pages
 		}
 		starts = append(starts, at)
 	}

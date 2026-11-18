@@ -44,6 +44,7 @@ type task struct {
 	url   string
 	from  string // page that linked to url (for dead-link reports)
 	depth int
+	kind  taskKind
 }
 
 // unwantedTag defines HTML tags to remove (mostly WordPress-specific)

@@ -12,6 +12,7 @@ BASE=${BASE:-HEAD}
 SITE_URL=${SITE_URL:-https://olamundo.pl}
 
 git config --global --add safe.directory '*'
+rm -f /report/report.txt /report/crawl.log   # never leave a previous run's result behind
 cd /src
 go build -o /usr/local/bin/mirrola .
 go build -o /usr/local/bin/sitecheck ./sitecheck

@@ -54,6 +54,10 @@ func TestNormalizeDropsVersionsAndNonces(t *testing.T) {
 	b := `<link href="/a.css?ver=7.0"><img src="/i.png?x=1&amp;ver=3"><script>var c={"nonce":"0123456789"};u="?_wpnonce=feedface99"</script>`
 	assert.Equal(t, string(normalize([]byte(a))), string(normalize([]byte(b))))
 	assert.NotEqual(t, string(normalize([]byte(`<a href="/x/">`))), string(normalize([]byte(`<a href="/y/">`))))
+	assert.Equal(t,
+		string(normalize([]byte(`<a data-slb-asset="123"><script>$.extend(SLB.View.assets, {"123":{"id":5}})</script><!-- generated-on='18 November 2026 21:19' -->`))),
+		string(normalize([]byte(`<a data-slb-asset="987"><script>$.extend(SLB.View.assets, {"987":{"id":5}})</script><!-- generated-on='19 November 2026 08:00' -->`))),
+		"lightbox ids and sitemap timestamps are per request")
 }
 
 func TestCheck(t *testing.T) {

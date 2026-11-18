@@ -72,6 +72,9 @@ func Run(parent context.Context) error {
 	if err := enqueueLink(ctx, cfg.BaseURL, "", 0, tasks); err != nil {
 		return fmt.Errorf("enqueue error: %w", err)
 	}
+	if err := enqueueSeeds(ctx, tasks); err != nil {
+		return fmt.Errorf("enqueue error: %w", err)
+	}
 
 	// First fatal error wins; it cancels the crawl.
 	var (
@@ -104,9 +107,16 @@ func Run(parent context.Context) error {
 					}
 					func() {
 						defer tasksWg.Done()
-						err := processURL(ctx, t.url, t.depth, tasks)
+						var err error
+						if t.kind == taskNotFound {
+							err = processNotFound(ctx, t, tasks)
+						} else {
+							err = processURL(ctx, t.url, t.depth, tasks)
+						}
 						switch {
 						case err == nil:
+						case t.kind == taskOptional && isDeadLink(err):
+							fmt.Printf("[INFO] %s not found on the site, skipped\n", t.url)
 						case isSkippable(err) && !cfg.Strict && t.from != "":
 							// A dead or off-site start URL is fatal (falls through to
 							// default): otherwise Run would succeed with an empty mirror.
@@ -225,21 +235,27 @@ func isSkippable(err error) bool {
 // from is the page or stylesheet that referenced link ("" for the start URL);
 // it is only used to report where a dead link came from.
 func enqueueLink(ctx context.Context, link, from string, depth int, tasks chan<- task) error {
+	return enqueue(ctx, task{url: link, from: from, depth: depth}, tasks)
+}
+
+// enqueue is enqueueLink for a task that may carry a kind (seeds.go).
+func enqueue(ctx context.Context, t task, tasks chan<- task) error {
 	// Check max depth (0 = unlimited, 1 = current page only, etc.)
-	if maxDepth > 0 && depth >= maxDepth {
+	if maxDepth > 0 && t.depth >= maxDepth {
 		return nil // Skip URLs at or beyond max depth
 	}
 
-	u, err := url.Parse(link)
+	u, err := url.Parse(t.url)
 	if err != nil {
-		return fmt.Errorf("failed to parse URL %s: %w", link, err)
+		return fmt.Errorf("failed to parse URL %s: %w", t.url, err)
 	}
 	if disallowedSchemes[strings.ToLower(u.Scheme)] {
 		return nil
 	}
 	fixPath(u)
 	u = normalize(u)
-	link = u.String()
+	link := u.String()
+	t.url = link
 
 	// Thread-safe deduplication check
 	visited.Lock()
@@ -252,7 +268,6 @@ func enqueueLink(ctx context.Context, link, from string, depth int, tasks chan<-
 
 	// Increment WaitGroup before enqueueing to track active tasks
 	tasksWg.Add(1)
-	t := task{url: link, from: from, depth: depth}
 	select {
 	case <-ctx.Done():
 		tasksWg.Done()
@@ -386,13 +401,30 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 			return err
 		}
 		var body io.Reader = resp.Body
-		if cfg.source != nil && isText(ct) {
-			// Scripts, feeds and sitemaps can carry the source address too.
+		rewrite := cfg.source != nil && isText(ct)
+		if rewrite || isRobots(link) || ct == "text/xml" || ct == "application/xml" {
 			b, err := io.ReadAll(resp.Body)
 			if err != nil {
 				return err
 			}
-			body = strings.NewReader(cfg.ToPublicText(string(b), link))
+			// robots.txt lists sitemaps, sitemaps list pages (seeds.go).
+			links, assets := discover(link, ct, b)
+			for _, a := range assets {
+				if err := enqueueLink(ctx, a, link, depth, tasks); err != nil {
+					fmt.Printf("[ERROR] Failed to enqueue asset %s: %v\n", a, err)
+				}
+			}
+			for _, l := range links {
+				if err := enqueueLink(ctx, l, link, depth+1, tasks); err != nil {
+					fmt.Printf("[ERROR] Failed to enqueue link %s: %v\n", l, err)
+				}
+			}
+			text := string(b)
+			if rewrite {
+				// Scripts, feeds and sitemaps can carry the source address too.
+				text = cfg.ToPublicText(text, link)
+			}
+			body = strings.NewReader(text)
 		}
 		if err := writeFile(out, body); err != nil {
 			return err

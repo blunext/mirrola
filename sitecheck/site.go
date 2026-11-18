@@ -118,6 +118,11 @@ var noise = []struct {
 	{regexp.MustCompile(`([?&](?:amp;)?ver=)[^"'&\s)\\]*`), "${1}"},
 	{regexp.MustCompile(`(?i)(nonce\\?["']?\s*[:=]\s*\\?["']?)[a-f0-9]{6,}`), "${1}"},
 	{regexp.MustCompile(`(?i)(_wpnonce=)[a-f0-9]{6,}`), "${1}"},
+	// Simple Lightbox numbers its images randomly on every request.
+	{regexp.MustCompile(`(data-slb-asset=")[0-9]+`), "${1}"},
+	{regexp.MustCompile(`"[0-9]+":(\{"id":)`), `"":${1}`},
+	// Sitemaps carry the time they were generated.
+	{regexp.MustCompile(`(generated-on=')[^']*`), "${1}"},
 }
 
 func normalize(b []byte) []byte {
