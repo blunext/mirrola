@@ -100,6 +100,8 @@ define('WPLANG', 'pl_PL');
  * in their development environments.
  */
 define('WP_DEBUG', true);
+define('WP_DEBUG_DISPLAY', false);   // nie pokazuj błędów na stronie (trafiłyby do crawla)
+define('WP_DEBUG_LOG', true);        // zapisuj je do wp-content/debug.log
 
 /* That's all, stop editing! Happy blogging. */
 
