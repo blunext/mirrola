@@ -143,7 +143,7 @@ var slb_url = "\/wp-content\/uploads\/image.jpg";
 			jsContent:     `var img = "https:\/\/example.com\/zdjęcia\/łódź.jpg";`,
 			currentURL:    "https://example.com/page",
 			baseURL:       "https://example.com",
-			expectedJS:    `var img = "\/zdjęcia\/łódź.jpg";`,
+			expectedJS:    `var img = "\/zdjecia\/lodz.jpg";`,
 			expectedFound: []string{"https://example.com/zdj%C4%99cia/%C5%82%C3%B3d%C5%BA.jpg"}, // URL gets percent-encoded
 		},
 		{

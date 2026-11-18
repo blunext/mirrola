@@ -15,6 +15,10 @@ type Config struct {
 	// Processing options
 	RewriteURL    bool
 	SafeFilenames bool
+	Strict        bool // abort the crawl when two URLs map to the same output file
+
+	// outputs tracks which URL produced each output file (nil = no tracking)
+	outputs *outputRegistry
 
 	// HTTP settings
 	UserAgent            string
@@ -53,6 +57,7 @@ func NewConfigFromGlobals(baseURL, outputDir string, rewriteURL, safeFilenames b
 		Concurrency:          concurrency,
 		QueueSize:            queueSize,
 		MaxDepth:             maxDepth,
+		outputs:              newOutputRegistry(),
 	}
 	cfg.InitRegexps()
 	return cfg

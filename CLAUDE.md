@@ -13,7 +13,7 @@ Mirrola turns a self-managed WordPress blog (production domain `olamundo.pl`, ho
 
 ```bash
 go build -o mirrola .                         # build crawler CLI
-go run . -url https://olamundo.pl -dir ./static [-rewrite] [-safe-filenames] [-delay 2] [-max-depth N] [-concurrency N]
+go run . -url https://olamundo.pl -dir ./static [-rewrite] [-safe-filenames] [-strict] [-delay 2] [-max-depth N] [-concurrency N]
 go run ./server -dir ./static                 # preview static output on :8080 (dir → index.html, trailing-slash redirect)
 go run ./replace -input <dump.sql> -output <out.sql>   # rewrite prod URLs/paths in a SQL dump for local Docker
 
@@ -43,7 +43,8 @@ go test ./crawler -coverprofile=crawler/cover.out && go tool cover -html=crawler
   - A missing extension is inferred from the Content-Type.
   - By default Polish diacritics are transliterated (`removeDiacritics`). With `-safe-filenames` paths are percent-encoded NFC instead.
   - With `-rewrite`, query strings get baked into the filename (`name_query.ext`). Queries over 80 chars become `q_<sha1>`.
-  - **Invariant:** `ToRelative` and `GetOutputPath` must produce matching paths in both filename modes. Change them together.
+  - **Invariant:** the link from `ToRelative` must resolve to the file written by `GetOutputPath`. Both go through `normalizePath`; `TestLinkMatchesWrittenFile` (`consistency_test.go`) checks it the way a static host resolves links (decode path, drop query, dir → `index.html`). `-safe-filenames` does not satisfy this yet: files are written with literal `%XX` names but the server decodes the link.
+  - **Collisions (`collisions.go`):** `claimOutput` records which URL produced each output path. The same resource in NFC/NFD form is skipped silently; a different URL on the same path (e.g. `łódź.jpg` vs `lodz.jpg`, or `?ver=1` vs `?ver=2` without `-rewrite`) logs `[WARN]` and keeps the first file, or aborts with `-strict`. A `Config` built without `NewConfigFromGlobals` has no registry and doesn't track.
 - **HTTP (`http.go`):** HEAD, then GET. On a 404 it retries with the path's Unicode normalization flipped (NFC↔NFD), because Polish characters in WordPress upload filenames are inconsistent. `writeFile` writes to a temp file, then renames it, and cleans up on failure.
 
 ## WordPress side (`wordpress/`)

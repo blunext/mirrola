@@ -29,6 +29,13 @@ func processHTML(ctx context.Context, pageURL string, body []byte) ([]string, []
 	assets, links := rewriteLinks(doc, currentBase, cfg.BaseURL)
 
 	outputFile := cfg.GetOutputPath(pageURL, "text/html")
+	write, err := cfg.claimOutput(outputFile, pageURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !write {
+		return assets, links, nil
+	}
 	if err := saveHTML(outputFile, doc); err != nil {
 		return nil, nil, err
 	}

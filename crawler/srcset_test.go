@@ -153,7 +153,7 @@ func TestConfig_ProcessSrcSet(t *testing.T) {
 			srcset:         "https://example.com/zdjęcia/łódź-480.jpg 480w, https://example.com/zdjęcia/łódź-800.jpg 800w",
 			currentURL:     "https://example.com/page",
 			baseURL:        "https://example.com",
-			expectedSrcset: "/zdjęcia/łódź-480.jpg 480w, /zdjęcia/łódź-800.jpg 800w",
+			expectedSrcset: "/zdjecia/lodz-480.jpg 480w, /zdjecia/lodz-800.jpg 800w",
 			expectedFound: []string{
 				"https://example.com/zdj%C4%99cia/%C5%82%C3%B3d%C5%BA-480.jpg",
 				"https://example.com/zdj%C4%99cia/%C5%82%C3%B3d%C5%BA-800.jpg",

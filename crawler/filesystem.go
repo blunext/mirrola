@@ -152,24 +152,31 @@ func writeFile(path string, r io.Reader) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	f, err := os.Create(tmp)
+	// Unique temp name in the target dir: concurrent writers never share it,
+	// and the final rename stays atomic (same filesystem).
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
 	if err != nil {
 		return err
 	}
+	tmp := f.Name()
 	defer func() {
 		f.Close()
 		if err != nil {
 			os.Remove(tmp)
 		}
 	}()
+	// CreateTemp uses 0600; static files must be world-readable when served.
+	if err = f.Chmod(0o644); err != nil {
+		return err
+	}
 	if _, err = io.Copy(f, r); err != nil {
 		return err
 	}
 	if err = f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	err = os.Rename(tmp, path)
+	return err
 }
 
 func saveHTML(outputFile string, doc *html.Node) error {

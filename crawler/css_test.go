@@ -139,7 +139,7 @@ func TestConfig_ProcessCSSFile(t *testing.T) {
 			css:           "background: url('https://example.com/zdjęcia/łódź.jpg');",
 			cssURL:        "https://example.com/style.css",
 			baseURL:       "https://example.com",
-			expectedCSS:   "background: url('/zdjęcia/łódź.jpg');",
+			expectedCSS:   "background: url('/zdjecia/lodz.jpg');",                              // must match the transliterated file name written by GetOutputPath
 			expectedFound: []string{"https://example.com/zdj%C4%99cia/%C5%82%C3%B3d%C5%BA.jpg"}, // URL gets percent-encoded
 		},
 		{

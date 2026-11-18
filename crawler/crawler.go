@@ -15,7 +15,7 @@ import (
 
 // Init initializes the crawler with the given configuration.
 // This function must be called before Run().
-func Init(baseURL, outputDir string, rewriteURL, safeFilenames bool, ua string, timeout int, delay float64, queue, workers, depth int) error {
+func Init(baseURL, outputDir string, rewriteURL, safeFilenames, strict bool, ua string, timeout int, delay float64, queue, workers, depth int) error {
 	// Store flag values in global pointers
 	userAgent = &ua
 	timeoutSec = &timeout
@@ -28,6 +28,7 @@ func Init(baseURL, outputDir string, rewriteURL, safeFilenames bool, ua string, 
 
 	// Initialize global Config from flags
 	cfg = NewConfigFromGlobals(baseURL, outputDir, rewriteURL, safeFilenames)
+	cfg.Strict = strict
 
 	// Initialize regexps and HTTP client
 	initRegexps()
@@ -95,6 +96,12 @@ func Run(ctx context.Context) error {
 	}
 
 	workersWg.Wait()
+	if c := cfg.Collisions(); len(c) > 0 {
+		fmt.Printf("[WARN] %d output collision(s); only the first URL was saved for each:\n", len(c))
+		for _, line := range c {
+			fmt.Printf("  - %s\n", line)
+		}
+	}
 	if err, ok := processError.Load().(error); ok && err != nil {
 		return fmt.Errorf("processing failed: %w", err)
 	}
@@ -214,6 +221,10 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 			}
 		}
 		out := cfg.GetOutputPath(link, ct)
+		write, err := cfg.claimOutput(out, link)
+		if err != nil || !write {
+			return err
+		}
 		if err := writeFile(out, strings.NewReader(newCSS)); err != nil {
 			return err
 		}
@@ -222,6 +233,10 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 	default:
 		// binary or other asset
 		out := cfg.GetOutputPath(link, ct)
+		write, err := cfg.claimOutput(out, link)
+		if err != nil || !write {
+			return err
+		}
 		if err := writeFile(out, resp.Body); err != nil {
 			return err
 		}

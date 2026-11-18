@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"golang.org/x/text/unicode/norm"
 )
 
 // --- URL helpers ---
@@ -189,13 +187,10 @@ func (c *Config) ToRelative(abs *url.URL, base string) string {
 		return abs.String() // Keep external URLs absolute
 	}
 
-	var pathStr string
-	if c.SafeFilenames {
-		// Force NFC normalization to match GetOutputPath behavior
-		pathStr = (&url.URL{Path: norm.NFC.String(abs.Path)}).EscapedPath()
-	} else {
-		pathStr = abs.Path
-	}
+	// Use the same path normalization as GetOutputPath, so the link always
+	// points at the file that was actually written (transliterated or
+	// percent-encoded NFC, depending on SafeFilenames).
+	pathStr := c.normalizePath(abs.Path)
 
 	if abs.RawQuery != "" {
 		return pathStr + "?" + abs.RawQuery

@@ -18,6 +18,7 @@ func main() {
 	outputDir := flag.String("dir", "./static", "Output directory")
 	rewriteURL := flag.Bool("rewrite", false, "Bake query params into filenames")
 	safeFilenames := flag.Bool("safe-filenames", false, "Use percent-encoded filenames (safer) instead of ASCII transliteration")
+	strict := flag.Bool("strict", false, "Fail when two different URLs map to the same output file (default: warn and keep the first)")
 	userAgent := flag.String("ua", "StaticCrawler/1.0", "HTTP User-Agent")
 	timeoutSec := flag.Int("timeout", 20, "HTTP timeout in seconds")
 	delayBetweenRequests := flag.Float64("delay", 0, "Delay in seconds between requests (0 = no delay, e.g., 5 = wait 5 seconds)")
@@ -32,7 +33,7 @@ func main() {
 	}
 
 	// Initialize crawler with configuration
-	if err := crawler.Init(*baseURL, *outputDir, *rewriteURL, *safeFilenames, *userAgent, *timeoutSec, *delayBetweenRequests, *queueSize, *concurrency, *maxDepth); err != nil {
+	if err := crawler.Init(*baseURL, *outputDir, *rewriteURL, *safeFilenames, *strict, *userAgent, *timeoutSec, *delayBetweenRequests, *queueSize, *concurrency, *maxDepth); err != nil {
 		fmt.Printf("[ERROR] Failed to initialize crawler: %v\n", err)
 		os.Exit(1)
 	}
