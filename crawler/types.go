@@ -37,8 +37,9 @@ type Config struct {
 // InitRegexps compiles all regular expressions used for URL extraction
 func (c *Config) InitRegexps() {
 	c.ReCSSURL = regexp.MustCompile(`url\(\s*['"]?\s*([^'")]+?)\s*['"]?\s*\)`) // url('...') in CSS
-	c.ReJSAbsURL = regexp.MustCompile(`(https?://[^\s"']+)`)                   // https://... in JS
-	c.UnicodeEsc = regexp.MustCompile(`\\u[0-9A-Fa-f]{4}`)                     // \uXXXX escapes
+	// Absolute URL in JS, possibly JSON-escaped: https:\/\/host\/p\u00f3\/x (stops at quotes, whitespace, other escapes like \")
+	c.ReJSAbsURL = regexp.MustCompile(`https?:(?:\\/|/|\\u002[fF]){2}(?:\\/|\\u[0-9A-Fa-f]{4}|[^\s"'\\])+`)
+	c.UnicodeEsc = regexp.MustCompile(`\\u[0-9A-Fa-f]{4}`) // \uXXXX escapes
 }
 
 // NewConfigFromGlobals creates a Config instance from command-line flag values.

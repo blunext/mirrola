@@ -74,9 +74,9 @@ var disallowedSchemes = map[string]bool{"mailto": true, "tel": true, "javascript
 
 // initRegexps compiles all regular expressions used for URL extraction
 func initRegexps() {
-	reCSSURL = regexp.MustCompile(`url\(\s*['"]?\s*([^'")]+?)\s*['"]?\s*\)`) // url('...') in CSS
-	reJSAbsURL = regexp.MustCompile(`(https?://[^\s"']+)`)                   // https://... in JS
-	unicodeEsc = regexp.MustCompile(`\\u[0-9A-Fa-f]{4}`)                     // \uXXXX escapes
+	reCSSURL = regexp.MustCompile(`url\(\s*['"]?\s*([^'")]+?)\s*['"]?\s*\)`)                              // url('...') in CSS
+	reJSAbsURL = regexp.MustCompile(`https?:(?:\\/|/|\\u002[fF]){2}(?:\\/|\\u[0-9A-Fa-f]{4}|[^\s"'\\])+`) // https://... in JS, possibly JSON-escaped
+	unicodeEsc = regexp.MustCompile(`\\u[0-9A-Fa-f]{4}`)                                                  // \uXXXX escapes
 }
 
 // initHTTPClient creates the shared HTTP client with timeout and connection pooling

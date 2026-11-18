@@ -9,25 +9,30 @@ import (
 
 // --- Config methods (for incremental refactoring) ---
 
-// ProcessInlineJS processes inline JavaScript for Simple Lightbox plugin (Config-based)
+// ProcessInlineJS rewrites same-host absolute URLs in inline JavaScript (the
+// Simple Lightbox config, a JSON blob where WordPress writes URLs as
+// https:\/\/host\/path and non-ASCII as \uXXXX).
+//
+// Only the matched URLs are decoded and rewritten; the rest of the script is
+// left byte for byte. Decoding the whole script would turn escapes like
+// \u0022 (") or \u003c/script\u003e into characters that break the JS or end
+// the <script> element early.
 func (c *Config) ProcessInlineJS(jsContent, currentURL, base string) (string, []string) {
 	var found []string
-	// Unescape \/ to / and decode unicode escapes like \u0026
-	unescaped := strings.ReplaceAll(jsContent, `\/`, `/`)
-	unescaped = c.decodeUnicodeEscapes(unescaped)
-	newJS := c.ReJSAbsURL.ReplaceAllStringFunc(unescaped, func(match string) string {
-		abs, err := resolveURL(currentURL, match)
-		if err != nil {
+	newJS := c.ReJSAbsURL.ReplaceAllStringFunc(jsContent, func(match string) string {
+		decoded := c.decodeUnicodeEscapes(strings.ReplaceAll(match, `\/`, `/`))
+		abs, err := resolveURL(currentURL, decoded)
+		if err != nil || !c.SameHost(abs.String(), base) {
 			return match
 		}
-		if c.SameHost(abs.String(), base) {
-			found = append(found, abs.String())
-			fixPath(abs)
-			rel := c.ToRelative(abs, base)
-			// Re-escape slashes for JS strings
-			return strings.ReplaceAll(rel, "/", `\/`)
+		found = append(found, abs.String())
+		fixPath(abs)
+		rel := c.ToRelative(abs, base)
+		// Keep the original style: JSON-escaped URLs get escaped slashes back.
+		if strings.Contains(match, `\/`) || strings.Contains(strings.ToLower(match), `\u002f`) {
+			rel = strings.ReplaceAll(rel, "/", `\/`)
 		}
-		return match
+		return rel
 	})
 	return newJS, found
 }

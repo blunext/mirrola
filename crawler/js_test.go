@@ -63,7 +63,7 @@ var img2 = "\/img2.jpg";`,
 			jsContent:     `var cdn = "https:\/\/cdn.example.com\/library.js";`,
 			currentURL:    "https://example.com/page",
 			baseURL:       "https://example.com",
-			expectedJS:    `var cdn = "https://cdn.example.com/library.js";`, // Slashes unescaped but URL not modified
+			expectedJS:    `var cdn = "https:\/\/cdn.example.com\/library.js";`, // external: left exactly as is
 			expectedFound: []string{},
 		},
 		{
@@ -262,7 +262,7 @@ func TestConfig_ProcessInlineJS_EdgeCases(t *testing.T) {
 			jsContent:     `// https://example.com/image.jpg`,
 			currentURL:    "https://example.com/page",
 			baseURL:       "https://example.com",
-			expectedJS:    `// \/image.jpg`,
+			expectedJS:    `// /image.jpg`, // unescaped URL stays unescaped
 			expectedFound: []string{"https://example.com/image.jpg"},
 		},
 	}
@@ -275,6 +275,64 @@ func TestConfig_ProcessInlineJS_EdgeCases(t *testing.T) {
 
 			assert.Equal(t, tt.expectedJS, resultJS, "JavaScript should be handled correctly")
 			assert.ElementsMatch(t, tt.expectedFound, found, "Found URLs should match")
+		})
+	}
+}
+
+// TestConfig_ProcessInlineJS_OnlyURLsChange: escapes outside URLs must survive
+// untouched. Decoding them would break the script: \u0022 would end a string,
+// \u003c/script\u003e would end the <script> element.
+func TestConfig_ProcessInlineJS_OnlyURLsChange(t *testing.T) {
+	c := Config{BaseURL: "https://example.com"}
+	c.InitRegexps()
+	const page = "https://example.com/post/"
+
+	cases := []struct {
+		name, in, want string
+		found          []string
+	}{
+		{
+			name:  "escaped quote in title",
+			in:    `{"source":"https:\/\/example.com\/a.jpg","title":"Say \u0022hi\u0022"}`,
+			want:  `{"source":"\/a.jpg","title":"Say \u0022hi\u0022"}`,
+			found: []string{"https://example.com/a.jpg"},
+		},
+		{
+			name:  "escaped closing script tag",
+			in:    `{"html":"\u003c/script\u003e","source":"https:\/\/example.com\/b.jpg"}`,
+			want:  `{"html":"\u003c/script\u003e","source":"\/b.jpg"}`,
+			found: []string{"https://example.com/b.jpg"},
+		},
+		{
+			name:  "lightbox template and polish title (as on olamundo.pl)",
+			in:    `{"layout":"<div><\/span><\/div>","name":"Domy\u015blny (jasny)","uri":"https:\/\/example.com\/wp-content\/plugins\/slb\/style.css"}`,
+			want:  `{"layout":"<div><\/span><\/div>","name":"Domy\u015blny (jasny)","uri":"\/wp-content\/plugins\/slb\/style.css"}`,
+			found: []string{"https://example.com/wp-content/plugins/slb/style.css"},
+		},
+		{
+			name:  "literal backslash-u in text",
+			in:    `{"t":"C:\\users","source":"https:\/\/example.com\/c.jpg"}`,
+			want:  `{"t":"C:\\users","source":"\/c.jpg"}`,
+			found: []string{"https://example.com/c.jpg"},
+		},
+		{
+			name:  "NFD polish file name escaped by json_encode",
+			in:    `{"source":"https:\/\/example.com\/uploads\/niedz\u0301wiedz\u0301-500x333.jpg"}`,
+			want:  `{"source":"\/uploads\/niedzwiedz-500x333.jpg"}`,
+			found: []string{"https://example.com/uploads/niedz%CC%81wiedz%CC%81-500x333.jpg"},
+		},
+		{
+			name:  "URL followed by escaped quote stops before it",
+			in:    `var h = "<a href=\"https:\/\/example.com\/d\/\">x<\/a>";`,
+			want:  `var h = "<a href=\"\/d\/\">x<\/a>";`,
+			found: []string{"https://example.com/d/"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, found := c.ProcessInlineJS(tc.in, page, c.BaseURL)
+			assert.Equal(t, tc.want, got)
+			assert.ElementsMatch(t, tc.found, found)
 		})
 	}
 }
