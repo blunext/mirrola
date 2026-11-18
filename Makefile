@@ -64,14 +64,21 @@ serve:
 # successful "make crawl" checked with "make serve". "git add -A" also picks up
 # new files (new posts, new uploads), which "git commit -a" would silently skip.
 # DIR's .gitignore must exclude .DS_Store and .idea/ (Pages publishes every
-# file in the repo).
+# file in the repo). It pushes whenever the branch is ahead of its upstream,
+# also when there is nothing new to commit (e.g. after a manual commit or an
+# earlier failed push).
 publish:
 	cd "$(DIR)" && git add -A
-	@cd "$(DIR)" && if git diff --cached --quiet; then \
-		echo "Nothing changed, nothing to publish."; \
+	@cd "$(DIR)" && \
+	if git diff --cached --quiet; then \
+		echo "Nothing new to commit."; \
 	else \
-		git diff --cached --shortstat && \
-		git commit -q -m "$(MSG)" && \
+		git diff --cached --shortstat && git commit -q -m "$(MSG)"; \
+	fi && \
+	ahead=$$(git rev-list --count @{u}..HEAD 2>/dev/null || echo unknown) && \
+	if [ "$$ahead" = "0" ]; then \
+		echo "Nothing to push: $$(git rev-parse --abbrev-ref HEAD) is up to date with its upstream."; \
+	else \
 		git push && \
 		echo "Pushed $$(git rev-parse --short HEAD) to $$(git rev-parse --abbrev-ref HEAD); Cloudflare Pages will deploy it."; \
 	fi
