@@ -9,10 +9,9 @@ import (
 func TestGetOutputPath_TrailingQuestionMark(t *testing.T) {
 	// Setup Config
 	cfg := &Config{
-		BaseURL:       "https://example.com",
-		OutputDir:     "./static",
-		RewriteURL:    false,
-		SafeFilenames: false,
+		BaseURL:    "https://example.com",
+		OutputDir:  "./static",
+		RewriteURL: false,
 	}
 	cfg.InitRegexps()
 

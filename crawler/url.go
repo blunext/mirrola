@@ -65,10 +65,6 @@ func resolveURL(currentURL, link string) (*url.URL, error) {
 	return normalize(abs), nil
 }
 
-// toRelative converts an absolute URL to a relative path for use in static HTML.
-// Handles Unicode normalization (NFC) when safe filenames are enabled to ensure
-// links match the actual files on disk across different filesystems.
-
 // fixPath clears RawPath to force URL encoding based on Path field
 func fixPath(u *url.URL) {
 	u.RawPath = ""
@@ -188,8 +184,7 @@ func (c *Config) ToRelative(abs *url.URL, base string) string {
 	}
 
 	// Use the same path normalization as GetOutputPath, so the link always
-	// points at the file that was actually written (transliterated or
-	// percent-encoded NFC, depending on SafeFilenames).
+	// points at the file that was actually written (transliterated).
 	pathStr := c.normalizePath(abs.Path)
 
 	if abs.RawQuery != "" {

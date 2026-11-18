@@ -16,10 +16,9 @@ func TestHTMLProcessing_CompleteFlow(t *testing.T) {
 
 	// Setup Config
 	cfg = &Config{
-		BaseURL:       "https://example.com",
-		OutputDir:     tempDir,
-		RewriteURL:    true,
-		SafeFilenames: false,
+		BaseURL:    "https://example.com",
+		OutputDir:  tempDir,
+		RewriteURL: true,
 	}
 	cfg.InitRegexps()
 

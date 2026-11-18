@@ -15,7 +15,7 @@ import (
 
 // Init initializes the crawler with the given configuration.
 // This function must be called before Run().
-func Init(baseURL, outputDir string, rewriteURL, safeFilenames, strict bool, ua string, timeout int, delay float64, queue, workers, depth int) error {
+func Init(baseURL, outputDir string, rewriteURL, strict bool, ua string, timeout int, delay float64, queue, workers, depth int) error {
 	// Store flag values in global pointers
 	userAgent = &ua
 	timeoutSec = &timeout
@@ -27,7 +27,7 @@ func Init(baseURL, outputDir string, rewriteURL, safeFilenames, strict bool, ua 
 	maxDepth = depth
 
 	// Initialize global Config from flags
-	cfg = NewConfigFromGlobals(baseURL, outputDir, rewriteURL, safeFilenames)
+	cfg = NewConfigFromGlobals(baseURL, outputDir, rewriteURL)
 	cfg.Strict = strict
 
 	// Initialize regexps and HTTP client

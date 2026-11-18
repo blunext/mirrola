@@ -10,8 +10,7 @@ import (
 
 func TestFilesystem_EdgeCases(t *testing.T) {
 	cfg := &Config{
-		OutputDir:     "/tmp/output",
-		SafeFilenames: false,
+		OutputDir: "/tmp/output",
 	}
 
 	tests := []struct {
@@ -65,10 +64,9 @@ func TestFilesystem_EdgeCases(t *testing.T) {
 	}
 }
 
-func TestFilesystem_SafeFilenames_EdgeCases(t *testing.T) {
+func TestFilesystem_SpecialChars(t *testing.T) {
 	cfg := &Config{
-		OutputDir:     "/tmp/output",
-		SafeFilenames: true,
+		OutputDir: "/tmp/output",
 	}
 
 	tests := []struct {
@@ -78,22 +76,16 @@ func TestFilesystem_SafeFilenames_EdgeCases(t *testing.T) {
 		expected    string
 	}{
 		{
-			name:        "Invalid filename characters with SafeFilenames",
+			name:        "Colon in path",
 			urlPath:     "/foo:bar",
 			contentType: "text/html",
-			// SafeFilenames uses url.EscapedPath().
-			// : is allowed in URL path, but might be escaped?
-			// url.EscapedPath() escapes special characters.
-			// : is not reserved in path segment?
-			// Actually, url.Path is already decoded. EscapedPath re-encodes it.
-			// : is %3A
-			expected: "/tmp/output/foo:bar/index.html", // Go's EscapedPath might not escape colon in path
+			expected:    "/tmp/output/foo:bar/index.html",
 		},
 		{
 			name:        "Space in path",
 			urlPath:     "/foo bar",
 			contentType: "text/html",
-			expected:    "/tmp/output/foo%20bar/index.html",
+			expected:    "/tmp/output/foo bar/index.html",
 		},
 	}
 

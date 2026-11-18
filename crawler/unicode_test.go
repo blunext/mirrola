@@ -8,9 +8,7 @@ import (
 )
 
 func TestUnicode_Normalization(t *testing.T) {
-	cfg := &Config{
-		SafeFilenames: true,
-	}
+	cfg := &Config{}
 
 	tests := []struct {
 		name     string
@@ -20,28 +18,28 @@ func TestUnicode_Normalization(t *testing.T) {
 		{
 			name:     "NFC ó (U+00F3)",
 			input:    "\u00F3", // ó
-			expected: "%C3%B3", // Percent-encoded when SafeFilenames=true
+			expected: "o",
 		},
 		{
 			name:     "NFD o + acute (U+006F U+0301)",
 			input:    "o\u0301", // o + acute
-			expected: "%C3%B3",  // Normalized to NFC, then percent-encoded
+			expected: "o",       // NFD input gives the same result as NFC
 		},
 		{
 			name:     "NFC ż (U+017C)",
 			input:    "\u017C",
-			expected: "%C5%BC",
+			expected: "z",
 		},
 		{
 			name:     "NFD z + dot above (U+007A U+0307)",
 			input:    "z\u0307",
-			expected: "%C5%BC",
+			expected: "z",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Test normalizePath with SafeFilenames=true (should use NFC)
+			// NFC and NFD spellings must map to the same transliterated path
 			result := cfg.normalizePath(tt.input)
 
 			// Verify result is NFC
@@ -115,7 +113,7 @@ func TestUnicode_InvalidSequences(t *testing.T) {
 	// norm.NFC.String() might not replace invalid bytes with Replacement Char.
 	// It depends on the transformer implementation.
 
-	cfg := &Config{SafeFilenames: true}
+	cfg := &Config{}
 	result := cfg.normalizePath(input)
 
 	// The result might vary. Let's just check it doesn't panic.

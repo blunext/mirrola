@@ -17,91 +17,71 @@ func TestConfig_ToRelative(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "Same host - converts to relative",
-			config: Config{
-				SafeFilenames: false,
-			},
+			name:     "Same host - converts to relative",
+			config:   Config{},
 			absURL:   "https://example.com/images/logo.png",
 			baseURL:  "https://example.com",
 			expected: "/images/logo.png",
 		},
 		{
-			name: "Different host - keeps absolute",
-			config: Config{
-				SafeFilenames: false,
-			},
+			name:     "Different host - keeps absolute",
+			config:   Config{},
 			absURL:   "https://external.com/image.png",
 			baseURL:  "https://example.com",
 			expected: "https://external.com/image.png",
 		},
 		{
-			name: "Same host with query params - preserves query",
-			config: Config{
-				SafeFilenames: false,
-			},
+			name:     "Same host with query params - preserves query",
+			config:   Config{},
 			absURL:   "https://example.com/style.css?v=1.2",
 			baseURL:  "https://example.com",
 			expected: "/style.css?v=1.2",
 		},
 		{
-			name: "Safe filenames mode with Polish characters",
-			config: Config{
-				SafeFilenames: true,
-			},
+			name:     "Polish characters are transliterated like the file name",
+			config:   Config{},
 			absURL:   "https://example.com/zdjęcia/łódź.jpg",
 			baseURL:  "https://example.com",
-			expected: "/zdj%C4%99cia/%C5%82%C3%B3d%C5%BA.jpg", // NFC-normalized and percent-encoded
+			expected: "/zdjecia/lodz.jpg",
 		},
 		{
-			name: "Root path",
-			config: Config{
-				SafeFilenames: false,
-			},
+			name:     "Root path",
+			config:   Config{},
 			absURL:   "https://example.com/",
 			baseURL:  "https://example.com",
 			expected: "/",
 		},
 		{
-			name: "Deep path",
-			config: Config{
-				SafeFilenames: false,
-			},
+			name:     "Deep path",
+			config:   Config{},
 			absURL:   "https://example.com/blog/2024/01/post.html",
 			baseURL:  "https://example.com",
 			expected: "/blog/2024/01/post.html",
 		},
 		{
-			name: "Case insensitive host matching",
-			config: Config{
-				SafeFilenames: false,
-			},
+			name:     "Case insensitive host matching",
+			config:   Config{},
 			absURL:   "https://EXAMPLE.COM/image.png",
 			baseURL:  "https://example.com",
 			expected: "/image.png",
 		},
 		{
-			name: "With fragment - fragment not in result",
-			config: Config{
-				SafeFilenames: false,
-			},
+			name:     "With fragment - fragment not in result",
+			config:   Config{},
 			absURL:   "https://example.com/page#section",
 			baseURL:  "https://example.com",
 			expected: "/page",
 		},
 		{
-			name: "Subdomain - different host",
-			config: Config{
-				SafeFilenames: false,
-			},
+			name:     "Subdomain - different host",
+			config:   Config{},
 			absURL:   "https://blog.example.com/post",
 			baseURL:  "https://example.com",
 			expected: "https://blog.example.com/post",
 		},
 		{
-			name: "Invalid base URL - returns absolute",
-			config: Config{
-				SafeFilenames: false,
-			},
+			name:     "Invalid base URL - returns absolute",
+			config:   Config{},
 			absURL:   "https://example.com/image.png",
 			baseURL:  "not a valid url",
 			expected: "https://example.com/image.png",

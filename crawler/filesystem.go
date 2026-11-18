@@ -76,25 +76,21 @@ func (c *Config) GetOutputPath(link string, contentType string) string {
 	return filepath.Join(c.OutputDir, pathPart)
 }
 
-// normalizePath applies NFC normalization and optionally transliterates diacritics (Config-based)
+// normalizePath maps a URL path to the on-disk path: NFC normalization plus
+// transliteration of diacritics (łódź → lodz). Used for both file names and
+// links, so the two always match.
 func (c *Config) normalizePath(urlPath string) string {
 	// Remove trailing ? (empty query marker) and other invalid filesystem chars
 	urlPath = strings.TrimSuffix(urlPath, "?")
+	return transliterate(norm.NFC.String(urlPath))
+}
 
-	// Start with NFC-normalized path
-	pathPart := norm.NFC.String(urlPath)
-
-	if c.SafeFilenames {
-		// Use percent-encoding for safe filenames
-		pathPart = (&url.URL{Path: pathPart}).EscapedPath()
-	} else {
-		// Apply transliteration if not using safe filenames
-		if cleaned, err := removeDiacritics(pathPart); err == nil {
-			pathPart = cleaned
-		}
+// transliterate removes diacritics, falling back to the input on error.
+func transliterate(p string) string {
+	if cleaned, err := removeDiacritics(p); err == nil {
+		return cleaned
 	}
-
-	return pathPart
+	return p
 }
 
 // applyQueryBaking bakes query parameters into the filename (Config-based)
@@ -105,18 +101,8 @@ func (c *Config) applyQueryBaking(u *url.URL, pathPart string) string {
 	} else {
 		u = rewritePageURL(u)
 	}
-	pathPart = u.Path
-
-	// Re-apply normalization after query baking to match original mode
-	if c.SafeFilenames {
-		// Use percent-encoding for safe filenames
-		pathPart = (&url.URL{Path: pathPart}).EscapedPath()
-	} else {
-		// Re-apply transliteration if needed
-		if cleaned, err := removeDiacritics(pathPart); err == nil {
-			pathPart = cleaned
-		}
-	}
+	// Re-apply transliteration: query values baked into the name may contain diacritics
+	pathPart = transliterate(u.Path)
 
 	return pathPart
 }
