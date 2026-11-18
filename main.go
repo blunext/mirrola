@@ -21,7 +21,7 @@ func main() {
 	strict := flag.Bool("strict", false, "Fail on dead links (404/410) and on two URLs mapping to the same output file (default: warn and continue)")
 	userAgent := flag.String("ua", "StaticCrawler/1.0", "HTTP User-Agent")
 	timeoutSec := flag.Int("timeout", 20, "HTTP timeout in seconds")
-	delayBetweenRequests := flag.Float64("delay", 0, "Delay in seconds between requests (0 = no delay, e.g., 5 = wait 5 seconds)")
+	delayBetweenRequests := flag.Float64("delay", 0, "Seconds between page requests, e.g. 1 (0 = no delay); static files are not delayed")
 	queueSize := flag.Int("queue", 10000, "Task queue size")
 	concurrency := flag.Int("concurrency", runtime.NumCPU(), "Number of workers")
 	maxDepth := flag.Int("max-depth", 0, "Maximum crawl depth (0 = unlimited, 1 = current page only, 2 = current + links, etc.)")

@@ -7,7 +7,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -243,4 +245,54 @@ func TestRun_PageRedirectingOffsiteIsSkipped(t *testing.T) {
 
 	_, err = runSite(t, context.Background(), h, true, 100, 4)
 	require.Error(t, err, "-strict fails on it")
+}
+
+// TestRun_DelayThrottlesPageRequests: -delay must space out the requests that
+// reach the server, not just the processing after them. Static files are not
+// throttled.
+func TestRun_DelayThrottlesPageRequests(t *testing.T) {
+	const pages, delay = 6, 0.2
+	var mu sync.Mutex
+	firstHit := map[string]time.Time{}
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		if _, ok := firstHit[r.URL.Path]; !ok {
+			firstHit[r.URL.Path] = time.Now()
+		}
+		mu.Unlock()
+		switch {
+		case r.URL.Path == "/":
+			var b strings.Builder
+			for i := range pages {
+				fmt.Fprintf(&b, `<a href="/p%d/">p</a><img src="/i%d.jpg">`, i, i)
+			}
+			servePage(w, b.String())
+		case strings.HasSuffix(r.URL.Path, ".jpg"):
+			w.Header().Set("Content-Type", "image/jpeg")
+			w.Write([]byte("jpg"))
+		default:
+			servePage(w, "<p>page</p>")
+		}
+	})
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	require.NoError(t, Init(ts.URL, t.TempDir(), false, "MirrolaTest/1.0", 5, delay, 100, 4, 0))
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	require.NoError(t, Run(ctx))
+
+	var starts []time.Time
+	for p, at := range firstHit {
+		if p == "/" || !strings.HasSuffix(p, "/") {
+			continue
+		}
+		starts = append(starts, at)
+	}
+	require.Len(t, starts, pages)
+	sort.Slice(starts, func(i, j int) bool { return starts[i].Before(starts[j]) })
+	for i := 1; i < len(starts); i++ {
+		gap := starts[i].Sub(starts[i-1])
+		assert.GreaterOrEqual(t, gap, 150*time.Millisecond, "page requests %d and %d only %v apart", i-1, i, gap)
+	}
+	assert.True(t, looksLikePage(ts.URL+"/p1/") && looksLikePage(ts.URL+"/a.php") && !looksLikePage(ts.URL+"/i1.jpg"))
 }

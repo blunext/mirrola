@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"sort"
 	"strings"
 	"sync"
@@ -166,6 +167,23 @@ type httpStatusError struct {
 
 func (e *httpStatusError) Error() string { return "HTTP " + e.Status }
 
+// looksLikePage guesses from the URL alone whether it is a page rather than a
+// static file: a directory-style path, no extension, or a server-side script.
+func looksLikePage(link string) bool {
+	u, err := url.Parse(link)
+	if err != nil {
+		return true
+	}
+	if u.Path == "" || strings.HasSuffix(u.Path, "/") {
+		return true
+	}
+	switch strings.ToLower(path.Ext(u.Path)) {
+	case "", ".html", ".htm", ".php":
+		return true
+	}
+	return false
+}
+
 // offsiteRedirectError is returned by processURL for an HTML page whose
 // request was redirected to another host.
 type offsiteRedirectError struct {
@@ -250,6 +268,16 @@ func enqueueLink(ctx context.Context, link, from string, depth int, tasks chan<-
 // processURL fetches and processes a URL based on its Content-Type.
 // Routes HTML to HTML processor, CSS to CSS processor, and everything else as binary assets.
 func processURL(ctx context.Context, link string, depth int, tasks chan<- task) error {
+	// -delay throttles requests for pages (WordPress renders them in PHP;
+	// static files are cheap). It has to wait before the request: waiting
+	// after it, as before, let every worker hit the server at once. The type
+	// is unknown until the response, so decide from the URL.
+	if limiter != nil && looksLikePage(link) {
+		if err := limiter.Wait(ctx); err != nil {
+			return err
+		}
+	}
+
 	resp, err := headOrGet(ctx, link)
 	if err != nil {
 		return err
@@ -285,13 +313,6 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 
 	switch {
 	case isHTML:
-		// Apply rate limiting ONLY for HTML pages, not assets
-		if limiter != nil {
-			if err := limiter.Wait(ctx); err != nil {
-				return err
-			}
-		}
-
 		// A page that redirects to another host is not part of this site.
 		// Saving it would publish someone else's page under our path, or, for
 		// a local WordPress whose siteurl still points to production, silently

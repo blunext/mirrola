@@ -39,7 +39,7 @@ go test ./crawler -coverprofile=crawler/cover.out && go tool cover -html=crawler
   - HTML goes to `processHTML` (`html.go`), which calls `filterDocument` and then `rewriteLinks`.
   - CSS goes to `ProcessCSSFile` (rewrites `url(...)`).
   - Everything else is streamed straight to disk.
-  - `-delay` rate-limits HTML pages only, never assets.
+  - `-delay` throttles page requests before they are sent (one shared limiter). Whether a URL is a page is guessed from the URL (`looksLikePage`: trailing `/`, no extension, `.html`/`.htm`/`.php`); static files are never delayed.
 - **`filterDocument`** removes the configured `unwantedTags` (shortlink, pingback, EditURI, oEmbed, wp-json), Cloudflare challenge scripts, comment-reply, WP emoji JS and CSS, and all HTML comments. Extend `unwantedTags` / `shouldRemoveScript` / `shouldRemoveStyle` to strip more.
 - **Link rewriting:**
   - Same-host URLs become root-relative paths (`ToRelative`). External hosts stay absolute.
