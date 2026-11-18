@@ -11,6 +11,10 @@ type Config struct {
 	// URLs and paths
 	BaseURL   string
 	OutputDir string
+	// SiteURL is where the mirror will be served (e.g. https://olamundo.pl
+	// when crawling a local WordPress). Used for absolute URLs that must not
+	// be relative, like <link rel="canonical">. Empty means BaseURL.
+	SiteURL string
 
 	// Processing options
 	Strict bool // fail on dead links (404/410) and on output file collisions

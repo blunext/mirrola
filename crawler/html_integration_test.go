@@ -182,3 +182,37 @@ func TestHTMLProcessing_Fragments(t *testing.T) {
 	assert.Contains(t, links, "https://example.com/other/")
 	assert.Contains(t, assets, "https://example.com/bg.png")
 }
+
+// TestHTMLProcessing_CanonicalIsAbsoluteOnPublicSite: <link rel="canonical">
+// must be a full URL on the public site even when crawling another host (a
+// local WordPress), while every other link stays root-relative.
+func TestHTMLProcessing_CanonicalIsAbsoluteOnPublicSite(t *testing.T) {
+	page := `<html><head>` +
+		`<link rel="canonical" href="http://localhost:8000/zdjęcia-łódź/?p=1#top">` +
+		`<link rel="stylesheet" href="http://localhost:8000/style.css">` +
+		`<link rel="Canonical Alternate" href="http://localhost:8000/other/">` +
+		`<link rel="canonical" href="https://elsewhere.example/x/">` +
+		`</head><body><a rel="canonical" href="http://localhost:8000/post/">a</a></body></html>`
+
+	cases := []struct{ siteURL, want string }{
+		{"https://olamundo.pl", "https://olamundo.pl"},
+		{"https://olamundo.pl/", "https://olamundo.pl"},
+		{"", "http://localhost:8000"}, // default: the crawled host
+	}
+	for _, tc := range cases {
+		t.Run("site="+tc.siteURL, func(t *testing.T) {
+			cfg = &Config{BaseURL: "http://localhost:8000", SiteURL: tc.siteURL, OutputDir: t.TempDir()}
+			cfg.InitRegexps()
+			_, _, err := processHTML(context.Background(), "http://localhost:8000/post/", []byte(page))
+			require.NoError(t, err)
+			out, err := os.ReadFile(filepath.Join(cfg.OutputDir, "post", "index.html"))
+			require.NoError(t, err)
+			got := string(out)
+			assert.Contains(t, got, `<link rel="canonical" href="`+tc.want+`/zdjecia-lodz/?p=1#top"/>`, "transliterated like the file, query and fragment kept")
+			assert.Contains(t, got, `<link rel="Canonical Alternate" href="`+tc.want+`/other/"/>`, "rel is a token list, case-insensitive")
+			assert.Contains(t, got, `href="https://elsewhere.example/x/"`, "a canonical on another host is left alone")
+			assert.Contains(t, got, `<link rel="stylesheet" href="/style.css"/>`, "other links stay relative")
+			assert.Contains(t, got, `<a rel="canonical" href="/post/">`, "only <link> canonicals are absolute")
+		})
+	}
+}

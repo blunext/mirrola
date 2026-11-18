@@ -23,7 +23,7 @@ func runSite(t *testing.T, ctx context.Context, h http.Handler, strict bool, que
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
 	dir := t.TempDir()
-	require.NoError(t, Init(ts.URL, dir, strict, "MirrolaTest/1.0", 5, 0, queue, workers, 0))
+	require.NoError(t, Init(ts.URL, "", dir, strict, "MirrolaTest/1.0", 5, 0, queue, workers, 0))
 
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -87,7 +87,7 @@ func TestRun_DeadStartURLFails(t *testing.T) {
 }
 
 func TestInit_RejectsZeroConcurrency(t *testing.T) {
-	require.Error(t, Init("http://example.com", t.TempDir(), false, "ua", 5, 0, 10, 0, 0))
+	require.Error(t, Init("http://example.com", "", t.TempDir(), false, "ua", 5, 0, 10, 0, 0))
 }
 
 func TestRun_DeadLinkFailsInStrictMode(t *testing.T) {
@@ -276,7 +276,7 @@ func TestRun_DelayThrottlesPageRequests(t *testing.T) {
 	})
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
-	require.NoError(t, Init(ts.URL, t.TempDir(), false, "MirrolaTest/1.0", 5, delay, 100, 4, 0))
+	require.NoError(t, Init(ts.URL, "", t.TempDir(), false, "MirrolaTest/1.0", 5, delay, 100, 4, 0))
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	require.NoError(t, Run(ctx))
@@ -322,7 +322,7 @@ func TestRun_NeverWritesHiddenPaths(t *testing.T) {
 			require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
 			require.NoError(t, os.WriteFile(p, []byte("orig"), 0o644))
 		}
-		require.NoError(t, Init(ts.URL, dir, strict, "MirrolaTest/1.0", 5, 0, 100, 4, 0))
+		require.NoError(t, Init(ts.URL, "", dir, strict, "MirrolaTest/1.0", 5, 0, 100, 4, 0))
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		err := Run(ctx)
 		cancel()

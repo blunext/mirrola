@@ -13,6 +13,9 @@
 # Typical flow: make crawl -> make serve (check it locally) -> make publish
 
 URL         ?= https://olamundo.pl
+# Public URL of the mirror (for <link rel=canonical>); stays the same when
+# crawling a local WordPress with URL=http://localhost:8000.
+SITE_URL    ?= https://olamundo.pl
 DIR         ?= $(HOME)/priv/olamundo
 DELAY       ?= 0
 CONCURRENCY ?= 10
@@ -55,7 +58,7 @@ clean-site:
 		-exec rm -rf {} +
 
 crawl: build clean-site
-	./$(BIN) -url "$(URL)" -dir "$(DIR)" -delay $(DELAY) -concurrency $(CONCURRENCY) $(if $(STRICT),-strict)
+	./$(BIN) -url "$(URL)" -site-url "$(SITE_URL)" -dir "$(DIR)" -delay $(DELAY) -concurrency $(CONCURRENCY) $(if $(STRICT),-strict)
 
 serve:
 	go run ./server -dir "$(DIR)" -port $(PORT)

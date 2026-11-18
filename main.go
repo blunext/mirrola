@@ -17,6 +17,7 @@ import (
 func main() {
 	// Parse command-line flags
 	baseURL := flag.String("url", "", "Base URL to start crawling (required)")
+	siteURL := flag.String("site-url", "", "Public URL the mirror will be served at, used for absolute links like <link rel=canonical> (default: -url)")
 	outputDir := flag.String("dir", "./static", "Output directory")
 	strict := flag.Bool("strict", false, "Fail on dead links (404/410) and on two URLs mapping to the same output file (default: warn and continue)")
 	userAgent := flag.String("ua", "StaticCrawler/1.0", "HTTP User-Agent")
@@ -33,7 +34,7 @@ func main() {
 	}
 
 	// Initialize crawler with configuration
-	if err := crawler.Init(*baseURL, *outputDir, *strict, *userAgent, *timeoutSec, *delayBetweenRequests, *queueSize, *concurrency, *maxDepth); err != nil {
+	if err := crawler.Init(*baseURL, *siteURL, *outputDir, *strict, *userAgent, *timeoutSec, *delayBetweenRequests, *queueSize, *concurrency, *maxDepth); err != nil {
 		fmt.Printf("[ERROR] Failed to initialize crawler: %v\n", err)
 		os.Exit(1)
 	}

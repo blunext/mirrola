@@ -44,7 +44,7 @@ go test ./crawler -coverprofile=crawler/cover.out && go tool cover -html=crawler
   - `-delay` throttles page requests before they are sent (one shared limiter). Whether a URL is a page is guessed from the URL (`looksLikePage`: trailing `/`, no extension, `.html`/`.htm`/`.php`); static files are never delayed.
 - **`filterDocument`** removes the configured `unwantedTags` (shortlink, pingback, EditURI, oEmbed, wp-json), Cloudflare challenge scripts, comment-reply, WP emoji JS and CSS, and all HTML comments. Extend `unwantedTags` / `shouldRemoveScript` / `shouldRemoveStyle` to strip more.
 - **Link rewriting:**
-  - Same-host URLs become root-relative paths (`ToRelative`). External hosts stay absolute.
+  - Same-host URLs become root-relative paths (`ToRelative`). External hosts stay absolute. Exception: `<link rel="canonical">` gets the full URL on the public site (`ToPublicURL`, `-site-url`, Makefile `SITE_URL`, default `-url`), so *.pages.dev previews and a local-WordPress crawl still point search engines at https://olamundo.pl/….
   - Fragments are kept in the written link (`resolveURL` preserves them; `urlKey` drops them for fetching/enqueueing). Fragment-only references (`#_ftn1`, `#`, `url(#clip)`) are left exactly as written (`isFragmentOnly`).
   - Rewriting covers `href`, `src`, `srcset`, inline `style`, `<style>`, `<source>`, and inline `<script>`.
   - Inline JS handling targets JSON-escaped `https:\/\/…` URLs (Simple Lightbox plugin) and re-escapes slashes after rewriting.

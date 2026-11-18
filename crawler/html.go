@@ -246,7 +246,7 @@ func processHrefAttribute(node *html.Node, attr *html.Attribute, currentURL, bas
 	var links []string
 
 	// href is usually a link, unless it's a <link> tag for CSS/icon
-	isAsset := false
+	isAsset, isCanonical := false, false
 	if strings.EqualFold(node.Data, "link") {
 		// check rel
 		for _, a := range node.Attr {
@@ -254,6 +254,11 @@ func processHrefAttribute(node *html.Node, attr *html.Attribute, currentURL, bas
 				val := strings.ToLower(a.Val)
 				if strings.Contains(val, "stylesheet") || strings.Contains(val, "icon") {
 					isAsset = true
+				}
+				for _, tok := range strings.Fields(val) {
+					if tok == "canonical" {
+						isCanonical = true
+					}
 				}
 				break
 			}
@@ -272,7 +277,11 @@ func processHrefAttribute(node *html.Node, attr *html.Attribute, currentURL, bas
 			links = append(links, urlKey(abs))
 		}
 		fixPath(abs)
-		attr.Val = cfg.ToRelative(abs, base)
+		if isCanonical {
+			attr.Val = cfg.ToPublicURL(abs, base)
+		} else {
+			attr.Val = cfg.ToRelative(abs, base)
+		}
 	}
 	return assets, links
 }

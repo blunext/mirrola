@@ -140,6 +140,26 @@ func escapeLink(s string, decodedPath bool) string {
 	return b.String()
 }
 
+// ToPublicURL is ToRelative made absolute on the public site (SiteURL, or
+// BaseURL when unset): for links search engines need as full URLs, such as
+// <link rel="canonical">. A relative canonical on a *.pages.dev preview would
+// tell Google the preview is the real page.
+func (c *Config) ToPublicURL(abs *url.URL, base string) string {
+	rel := c.ToRelative(abs, base)
+	if !strings.HasPrefix(rel, "/") {
+		return rel // external URL, already absolute
+	}
+	site := c.SiteURL
+	if site == "" {
+		site = c.BaseURL
+	}
+	s, err := url.Parse(site)
+	if err != nil || s.Host == "" {
+		return rel
+	}
+	return s.Scheme + "://" + s.Host + rel
+}
+
 // SameHost checks if two URLs have the same host (case-insensitive)
 func (c *Config) SameHost(u1, u2 string) bool {
 	u, err := url.Parse(u1)

@@ -17,7 +17,7 @@ import (
 
 // Init initializes the crawler with the given configuration.
 // This function must be called before Run().
-func Init(baseURL, outputDir string, strict bool, ua string, timeout int, delay float64, queue, workers, depth int) error {
+func Init(baseURL, siteURL, outputDir string, strict bool, ua string, timeout int, delay float64, queue, workers, depth int) error {
 	if workers < 1 {
 		return fmt.Errorf("concurrency must be at least 1, got %d", workers)
 	}
@@ -39,6 +39,7 @@ func Init(baseURL, outputDir string, strict bool, ua string, timeout int, delay 
 	// Initialize global Config from flags
 	cfg = NewConfigFromGlobals(baseURL, outputDir)
 	cfg.Strict = strict
+	cfg.SiteURL = siteURL
 
 	// Initialize HTTP client (Config.InitRegexps runs in NewConfigFromGlobals)
 	initHTTPClient()
