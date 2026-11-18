@@ -76,7 +76,7 @@ publish:
 	if git diff --cached --quiet; then \
 		echo "Nothing new to commit."; \
 	else \
-		git diff --cached --shortstat && git commit -q -m "$(MSG)"; \
+		git --no-pager diff --cached --shortstat && git commit -q -m "$(MSG)"; \
 	fi && \
 	ahead=$$(git rev-list --count @{u}..HEAD 2>/dev/null || echo unknown) && \
 	if [ "$$ahead" = "0" ]; then \
