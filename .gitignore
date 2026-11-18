@@ -80,3 +80,6 @@ fabric.properties
 
 # Build output
 /mirrola
+
+# make check output
+/.check/

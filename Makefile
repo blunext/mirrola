@@ -10,6 +10,11 @@
 #   make publish               # commit everything in DIR (new files too) and push;
 #                              # the push triggers the Cloudflare Pages deploy
 #
+#   make check                 # crawl the local WordPress into a throwaway dir (in Docker)
+#                              # and compare it with DIR at BASE (default HEAD): removed
+#                              # pages, changed visible text, broken internal links.
+#                              # Report in .check/report.txt. Run after every plugin/WP change.
+#
 #   make sync                  # replace the local WordPress (files + DB) with a copy
 #                              # from the host (wordpress/sync-from-host.sh, interactive)
 #   make sync-skip             # same, reusing wordpress.tar.gz / wordpress_db.sql
@@ -25,13 +30,14 @@ DELAY       ?= 0
 CONCURRENCY ?= 10
 PORT        ?= 8081
 STRICT      ?=
+BASE        ?= HEAD
 MSG         ?= Update site $(shell date '+%Y-%m-%d %H:%M')
 
 BIN := mirrola
 # Marks a directory as crawler output that clean-site may empty.
 MARKER := .mirrola-site
 
-.PHONY: build test clean-site crawl serve publish sync sync-skip
+.PHONY: build test clean-site crawl serve publish sync sync-skip check
 
 build:
 	go build -o $(BIN) .
@@ -97,3 +103,17 @@ sync:
 
 sync-skip:
 	./wordpress/sync-from-host.sh --skip-download
+
+# Compares a fresh crawl of the local WordPress with the published mirror
+# (DIR at BASE). Everything runs in a container: DIR and this repo are mounted
+# read-only, the crawl goes to a throwaway directory inside it. Exit status 1:
+# look at the [FAIL] sections before publishing.
+check:
+	@docker inspect -f '{{.State.Running}}' wordpress 2>/dev/null | grep -q true \
+		|| { echo "The local WordPress is not running (cd wordpress && docker compose up -d)."; exit 1; }
+	@mkdir -p .check
+	docker run --rm --network wordpress_wordpress_network \
+		-v "$(CURDIR)":/src:ro -v "$(DIR)":/site:ro -v "$(CURDIR)/.check":/report \
+		-v mirrola-gomod:/go/pkg/mod -v mirrola-gobuild:/root/.cache/go-build \
+		-e BASE="$(BASE)" -e SITE_URL="$(SITE_URL)" \
+		golang:1.27 sh /src/scripts/check.sh

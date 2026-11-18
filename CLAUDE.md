@@ -26,6 +26,7 @@ make publish                                  # git add -A + commit + push in ~/
 make crawl URL=http://localhost:8000 DELAY=0  # crawl the local Docker WordPress; DIR=, STRICT=1 also work
 make sync                                     # replace the local WordPress (files + DB) with a fresh copy from the host (wordpress/sync-from-host.sh, interactive; wipes local-only posts)
 make sync-skip                                # same, reusing the already downloaded wordpress.tar.gz / wordpress_db.sql
+make check                                    # crawl the local WordPress in Docker into a throwaway dir and compare it with ~/priv/olamundo at BASE (default HEAD); report in .check/report.txt; run after every plugin/WP/PHP change
 # make crawl runs clean-site first: it deletes everything in DIR except top-level .* and Pages config (_headers, _redirects, …).
 # It refuses unless DIR is a git repo containing the marker file .mirrola-site (touch DIR/.mirrola-site once). Never point DIR at a source repo.
 
@@ -67,6 +68,12 @@ go test ./crawler -coverprofile=crawler/cover.out && go tool cover -html=crawler
   - **Hidden paths are never written** (`checkNotHidden` in `claimOutput`): any path component starting with `.` is refused (`hiddenPathError`, skipped like a dead link, fatal with `-strict`). The output dir is a git repo, so a crawled `/.git/config` or `/.gitignore` would otherwise overwrite it; `make clean-site` keeps dotfiles too.
   - **Collisions (`collisions.go`):** `claimOutput` records which URL produced each output path. The same resource in NFC/NFD form is skipped silently; a different URL on the same path (e.g. `łódź.jpg` vs `lodz.jpg`, or `?ver=1` vs `?ver=2`) logs `[WARN]` and keeps the first file, or aborts with `-strict`. A `Config` built without `NewConfigFromGlobals` has no registry and doesn't track.
 - **HTTP (`http.go` `fetch`):** one GET per URL (no HEAD: it used to precede every GET and its result was never used). On a 404 it retries once with the path's Unicode normalization flipped (NFC↔NFD), because Polish characters in WordPress upload filenames are inconsistent. `writeFile` writes to a temp file, then renames it, and cleans up on failure.
+
+## Regression check (`make check`, `sitecheck/`, `scripts/check.sh`)
+
+- Runs in `golang:1.27` on the compose network: builds the crawler and `sitecheck`, extracts the baseline with `git archive BASE` from `~/priv/olamundo` (mounted read-only), crawls the local WordPress through a tiny proxy on `localhost:8000` → `wordpress:8000` that keeps the Host header (WordPress redirects any other host), then runs `sitecheck -old baseline -new crawl -forbid localhost:8000`.
+- `sitecheck` fails (exit 1) on removed pages, changed *visible* text (title, body text, image alt), broken internal links that weren't broken in the baseline (resolved like a static host), and forbidden strings. Markup-only changes are reported as tag patterns with page counts (numbers and the page's own path masked, `?ver=` and nonces ignored): that is how the missing lightbox layout showed up. Asset and file changes are informational.
+- Workflow for any WordPress change (plugin removal/update, core, PHP image): change one thing, `make check`, read the report.
 
 ## WordPress side (`wordpress/`)
 
