@@ -3,6 +3,7 @@ package crawler
 import (
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -59,6 +60,9 @@ func canonicalSource(link string) string {
 // a collision is returned as an error. A Config without a registry (e.g. built
 // directly in tests) disables tracking.
 func (c *Config) claimOutput(outPath, link string) (bool, error) {
+	if err := c.checkNotHidden(outPath); err != nil {
+		return false, err
+	}
 	r := c.outputs
 	if r == nil {
 		return true, nil
@@ -82,6 +86,30 @@ func (c *Config) claimOutput(outPath, link string) (bool, error) {
 	}
 	fmt.Printf("[WARN] %s (keeping the first)\n", collision.Error())
 	return false, nil
+}
+
+// hiddenPathError is returned for an output path with a component starting
+// with "." (e.g. a page linking to /.git/config or /.gitignore).
+type hiddenPathError struct{ Path string }
+
+func (e *hiddenPathError) Error() string {
+	return "refusing to write hidden path " + e.Path + " (it would land in the output repo's .git, .gitignore or another dotfile)"
+}
+
+// checkNotHidden rejects output paths with a hidden component. The output
+// directory is a git repo: writing /.git/config or /.gitignore from a crawled
+// link would corrupt it, and make clean-site never removes dotfiles either.
+func (c *Config) checkNotHidden(outPath string) error {
+	rel, err := filepath.Rel(c.OutputDir, outPath)
+	if err != nil {
+		rel = outPath
+	}
+	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+		if strings.HasPrefix(part, ".") && part != "." {
+			return &hiddenPathError{Path: rel}
+		}
+	}
+	return nil
 }
 
 // Collisions returns the collisions detected so far.

@@ -205,7 +205,8 @@ func isDeadLink(err error) bool {
 // aborting the crawl: a dead link, or a page that redirects off-site.
 func isSkippable(err error) bool {
 	var oe *offsiteRedirectError
-	return isDeadLink(err) || errors.As(err, &oe)
+	var he *hiddenPathError
+	return isDeadLink(err) || errors.As(err, &oe) || errors.As(err, &he)
 }
 
 // --- Crawler logic ---

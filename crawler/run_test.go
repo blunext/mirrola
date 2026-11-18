@@ -296,3 +296,47 @@ func TestRun_DelayThrottlesPageRequests(t *testing.T) {
 	}
 	assert.True(t, looksLikePage(ts.URL+"/p1/") && looksLikePage(ts.URL+"/a.php") && !looksLikePage(ts.URL+"/i1.jpg"))
 }
+
+// TestRun_NeverWritesHiddenPaths: the output dir is a git repo. A crawled
+// link to /.git/config or /.gitignore must not overwrite the repo's own
+// files, even if the server serves them.
+func TestRun_NeverWritesHiddenPaths(t *testing.T) {
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/":
+			servePage(w, `<a href="/ok/">ok</a><a href="/.git/config">g</a><a href="/.gitignore">i</a>`+
+				`<a href="/.mirrola-site">m</a><img src="/wp-content/.hidden/x.jpg">`)
+		case "/ok/":
+			servePage(w, "<p>ok</p>")
+		default:
+			w.Write([]byte("EVIL")) // served with no Content-Type, like a raw file
+		}
+	})
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+
+	for _, strict := range []bool{false, true} {
+		dir := t.TempDir()
+		for _, f := range []string{".git/config", ".gitignore", ".mirrola-site"} {
+			p := filepath.Join(dir, f)
+			require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o755))
+			require.NoError(t, os.WriteFile(p, []byte("orig"), 0o644))
+		}
+		require.NoError(t, Init(ts.URL, dir, strict, "MirrolaTest/1.0", 5, 0, 100, 4, 0))
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		err := Run(ctx)
+		cancel()
+		if strict {
+			require.Error(t, err, "-strict fails on a skipped link")
+		} else {
+			require.NoError(t, err)
+			assert.FileExists(t, filepath.Join(dir, "ok", "index.html"))
+		}
+		for _, f := range []string{".git/config", ".gitignore", ".mirrola-site"} {
+			got, err := os.ReadFile(filepath.Join(dir, f))
+			require.NoError(t, err)
+			assert.Equal(t, "orig", string(got), "%s must not be overwritten (strict=%v)", f, strict)
+		}
+		assert.NoFileExists(t, filepath.Join(dir, "wp-content", ".hidden", "x.jpg"))
+	}
+}
