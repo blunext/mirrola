@@ -39,8 +39,7 @@ func Init(baseURL, outputDir string, strict bool, ua string, timeout int, delay 
 	cfg = NewConfigFromGlobals(baseURL, outputDir)
 	cfg.Strict = strict
 
-	// Initialize regexps and HTTP client
-	initRegexps()
+	// Initialize HTTP client (Config.InitRegexps runs in NewConfigFromGlobals)
 	initHTTPClient()
 
 	return nil

@@ -38,14 +38,23 @@ func addMissingExtension(pathPart, contentType string) string {
 			return pathPart + "index.html"
 		}
 		return pathPart + "/index.html"
+	}
+
+	var ext2 string
+	switch contentType {
 	case "text/css":
-		return pathPart + ".css"
+		ext2 = ".css"
 	case "application/javascript", "text/javascript":
-		return pathPart + ".js"
+		ext2 = ".js"
 	default:
-		if ext2, _ := extForContentType(contentType); ext2 != "" {
-			return pathPart + ext2
+		ext2, _ = extForContentType(contentType)
+	}
+	if ext2 != "" {
+		// "/feed/" served as RSS becomes feed/index.xml, not a hidden feed/.xml
+		if strings.HasSuffix(pathPart, "/") {
+			return pathPart + "index" + ext2
 		}
+		return pathPart + ext2
 	}
 
 	return pathPart

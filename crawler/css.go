@@ -7,82 +7,43 @@ import (
 
 // --- CSS processing ---
 
-// --- Config methods (for incremental refactoring) ---
+// rewriteCSSURLs rewrites same-host url(...) references in CSS to root-relative
+// links and returns the absolute URLs it found. Relative references resolve
+// against docURL (the stylesheet, or the page for inline CSS); data: URIs and
+// other hosts are left alone.
+func (c *Config) rewriteCSSURLs(css, docURL, base string) (string, []string) {
+	found := []string{}
+	out := c.ReCSSURL.ReplaceAllStringFunc(css, func(m string) string {
+		urls := c.ReCSSURL.FindStringSubmatch(m)
+		if len(urls) < 2 {
+			return m
+		}
+		orig := urls[1]
+		if strings.HasPrefix(orig, "data:") {
+			return m
+		}
+		abs, err := resolveURL(docURL, orig)
+		if err != nil || !c.SameHost(abs.String(), base) {
+			return m
+		}
+		found = append(found, abs.String())
+		fixPath(abs)
+		return fmt.Sprintf("url('%s')", c.ToRelative(abs, base))
+	})
+	return out, found
+}
 
-// ProcessCSSFile processes a CSS file and rewrites URLs (Config-based)
+// ProcessCSSFile rewrites URLs in a downloaded stylesheet.
 func (c *Config) ProcessCSSFile(css, cssURL, base string) (string, []string) {
-	var found []string
-	out := c.ReCSSURL.ReplaceAllStringFunc(css, func(m string) string {
-		urls := c.ReCSSURL.FindStringSubmatch(m)
-		if len(urls) < 2 {
-			return m
-		}
-		orig := urls[1]
-		if strings.HasPrefix(orig, "data:") {
-			return m
-		}
-		abs, err := resolveURL(cssURL, orig)
-		if err != nil {
-			return m
-		}
-		if c.SameHost(abs.String(), base) {
-			found = append(found, abs.String())
-			fixPath(abs)
-			return fmt.Sprintf("url('%s')", c.ToRelative(abs, base))
-		}
-		return m
-	})
-	return out, found
+	return c.rewriteCSSURLs(css, cssURL, base)
 }
 
-// ProcessInlineCSS processes inline CSS and rewrites URLs (Config-based)
+// ProcessInlineCSS rewrites URLs in a <style> element.
 func (c *Config) ProcessInlineCSS(css, currentURL, base string) (string, []string) {
-	found := []string{}
-	out := c.ReCSSURL.ReplaceAllStringFunc(css, func(m string) string {
-		urls := c.ReCSSURL.FindStringSubmatch(m)
-		if len(urls) < 2 {
-			return m
-		}
-		orig := urls[1]
-		if strings.HasPrefix(orig, "data:") {
-			return m
-		}
-		abs, err := resolveURL(currentURL, orig)
-		if err != nil {
-			return m
-		}
-		if c.SameHost(abs.String(), base) {
-			found = append(found, abs.String())
-			fixPath(abs)
-			return fmt.Sprintf("url('%s')", c.ToRelative(abs, base))
-		}
-		return m
-	})
-	return out, found
+	return c.rewriteCSSURLs(css, currentURL, base)
 }
 
-// ProcessInlineStyle processes inline style attributes and rewrites URLs (Config-based)
+// ProcessInlineStyle rewrites URLs in a style="..." attribute.
 func (c *Config) ProcessInlineStyle(style, currentURL, base string) (string, []string) {
-	found := []string{}
-	out := c.ReCSSURL.ReplaceAllStringFunc(style, func(m string) string {
-		urls := c.ReCSSURL.FindStringSubmatch(m)
-		if len(urls) < 2 {
-			return m
-		}
-		orig := urls[1]
-		if strings.HasPrefix(orig, "data:") {
-			return m
-		}
-		abs, err := resolveURL(currentURL, orig)
-		if err != nil {
-			return m
-		}
-		if c.SameHost(abs.String(), base) {
-			found = append(found, abs.String())
-			fixPath(abs)
-			return fmt.Sprintf("url('%s')", c.ToRelative(abs, base))
-		}
-		return m
-	})
-	return out, found
+	return c.rewriteCSSURLs(style, currentURL, base)
 }

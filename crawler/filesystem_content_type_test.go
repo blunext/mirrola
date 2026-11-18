@@ -67,6 +67,8 @@ func TestAddMissingExtension_WithContentType(t *testing.T) {
 		{"JS without ext", "/app", "application/javascript", "/app.js"},
 		{"HTML without ext", "/page", "text/html", "/page/index.html"},
 		{"HTML root", "/", "text/html", "/index.html"},
+		{"Directory-style path served as image", "/img/", "image/png", "/img/index.png"},
+		{"Directory-style path served as CSS", "/style/", "text/css", "/style/index.css"},
 		{"HTML empty", "", "text/html", "/index.html"},
 		{"Unknown content type", "/file", "unknown/type", "/file"},
 		{"WebP", "/image", "image/webp", "/image.webp"},

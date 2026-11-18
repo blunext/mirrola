@@ -116,3 +116,17 @@ func TestHTMLProcessing_AudioSource(t *testing.T) {
 	assert.Contains(t, assets, "https://example.com/audio/song.mp3")
 	assert.Contains(t, assets, "https://example.com/audio/song.ogg")
 }
+
+// TestHTMLProcessing_SourceProcessedOnce: <source> src/srcset are handled by
+// the generic attribute pass; a second pass used to re-process the already
+// rewritten values and report every asset twice.
+func TestHTMLProcessing_SourceProcessedOnce(t *testing.T) {
+	cfg = &Config{BaseURL: "https://example.com", OutputDir: t.TempDir()}
+	cfg.InitRegexps()
+
+	page := `<picture><source srcset="https://example.com/a.webp 1x"></picture>` +
+		`<video><source src="https://example.com/b.mp4"></video>`
+	assets, _, err := processHTML(context.Background(), "https://example.com/", []byte(page))
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"https://example.com/a.webp", "https://example.com/b.mp4"}, assets)
+}

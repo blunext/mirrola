@@ -2,7 +2,6 @@ package crawler
 
 import (
 	"net/http"
-	"regexp"
 	"sync"
 	"time"
 
@@ -32,11 +31,6 @@ var (
 		sync.Mutex
 		m map[string]bool
 	}{m: make(map[string]bool)}
-
-	// Compiled regexps for URL extraction
-	reCSSURL   *regexp.Regexp // matches url(...) in CSS
-	reJSAbsURL *regexp.Regexp // matches absolute URLs in JS
-	unicodeEsc *regexp.Regexp // matches \uXXXX escape sequences
 
 	// WaitGroup for tracking active tasks
 	tasksWg sync.WaitGroup
@@ -71,13 +65,6 @@ var unwantedTags = []unwantedTag{
 
 // URL schemes that should never be crawled
 var disallowedSchemes = map[string]bool{"mailto": true, "tel": true, "javascript": true, "data": true}
-
-// initRegexps compiles all regular expressions used for URL extraction
-func initRegexps() {
-	reCSSURL = regexp.MustCompile(`url\(\s*['"]?\s*([^'")]+?)\s*['"]?\s*\)`)                              // url('...') in CSS
-	reJSAbsURL = regexp.MustCompile(`https?:(?:\\/|/|\\u002[fF]){2}(?:\\/|\\u[0-9A-Fa-f]{4}|[^\s"'\\])+`) // https://... in JS, possibly JSON-escaped
-	unicodeEsc = regexp.MustCompile(`\\u[0-9A-Fa-f]{4}`)                                                  // \uXXXX escapes
-}
 
 // initHTTPClient creates the shared HTTP client with timeout and connection pooling
 func initHTTPClient() {

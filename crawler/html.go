@@ -311,8 +311,6 @@ func processSpecialElements(node *html.Node, currentURL, base string) []string {
 		assets = append(assets, processStyleElement(node, currentURL, base)...)
 	case "script":
 		assets = append(assets, processScriptElement(node, currentURL, base)...)
-	case "source":
-		assets = append(assets, processSourceElement(node, currentURL, base)...)
 	}
 	return assets
 }
@@ -347,27 +345,4 @@ func processScriptElement(node *html.Node, currentURL, base string) []string {
 		return found
 	}
 	return nil
-}
-
-// processSourceElement handles <source> elements in <picture>, <video>/<audio>
-func processSourceElement(node *html.Node, currentURL, base string) []string {
-	var assets []string
-
-	for i := range node.Attr {
-		attr := &node.Attr[i]
-		if strings.EqualFold(attr.Key, "srcset") {
-			newSrc, found := cfg.ProcessSrcSet(attr.Val, currentURL, base)
-			attr.Val = newSrc
-			assets = append(assets, found...)
-		}
-		if strings.EqualFold(attr.Key, "src") {
-			abs, err := resolveURL(currentURL, attr.Val)
-			if err == nil && cfg.SameHost(abs.String(), base) {
-				assets = append(assets, abs.String())
-				fixPath(abs)
-				attr.Val = cfg.ToRelative(abs, base)
-			}
-		}
-	}
-	return assets
 }
