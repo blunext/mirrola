@@ -1,7 +1,6 @@
 package crawler
 
 import (
-	"bytes"
 	"io"
 	"mime"
 	"net/url"
@@ -11,7 +10,6 @@ import (
 	"strings"
 	"unicode"
 
-	"golang.org/x/net/html"
 	"golang.org/x/text/runes"
 	"golang.org/x/text/transform"
 	"golang.org/x/text/unicode/norm"
@@ -158,14 +156,6 @@ func writeFile(path string, r io.Reader) error {
 	}
 	err = os.Rename(tmp, path)
 	return err
-}
-
-func saveHTML(outputFile string, doc *html.Node) error {
-	var buf bytes.Buffer
-	if err := html.Render(&buf, doc); err != nil {
-		return err
-	}
-	return writeFile(outputFile, &buf)
 }
 
 func removeDiacritics(s string) (string, error) {

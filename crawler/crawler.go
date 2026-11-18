@@ -40,6 +40,7 @@ func Init(baseURL, siteURL, outputDir string, strict bool, ua string, timeout in
 	cfg = NewConfigFromGlobals(baseURL, outputDir)
 	cfg.Strict = strict
 	cfg.SiteURL = siteURL
+	cfg.source = newSourceRewriter(baseURL, siteURL)
 
 	// Initialize HTTP client (Config.InitRegexps runs in NewConfigFromGlobals)
 	initHTTPClient()
@@ -153,6 +154,13 @@ func Run(parent context.Context) error {
 	}
 	if fatalErr != nil {
 		return fmt.Errorf("processing failed: %w", fatalErr)
+	}
+	if leaks := cfg.SourceLeaks(); len(leaks) > 0 {
+		fmt.Printf("[ERROR] %d file(s) still contain the source address %s after rewriting it to %s:\n", len(leaks), cfg.source.sourceLabel, cfg.SiteURL)
+		for _, u := range leaks {
+			fmt.Printf("  - %s\n", u)
+		}
+		return fmt.Errorf("%d file(s) still contain the source address %s; don't publish this mirror", len(leaks), cfg.source.sourceLabel)
 	}
 	if err := parent.Err(); err != nil {
 		return fmt.Errorf("crawl interrupted, output is incomplete: %w", err)
@@ -352,6 +360,7 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 		}
 		css := string(b)
 		newCSS, found := cfg.ProcessCSSFile(css, final, cfg.BaseURL)
+		newCSS = cfg.ToPublicText(newCSS, link)
 		// CSS assets also inherit current depth
 		for _, l := range found {
 			if err := enqueueLink(ctx, l, link, depth, tasks); err != nil {
@@ -376,7 +385,16 @@ func processURL(ctx context.Context, link string, depth int, tasks chan<- task) 
 		if err != nil || !write {
 			return err
 		}
-		if err := writeFile(out, resp.Body); err != nil {
+		var body io.Reader = resp.Body
+		if cfg.source != nil && isText(ct) {
+			// Scripts, feeds and sitemaps can carry the source address too.
+			b, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return err
+			}
+			body = strings.NewReader(cfg.ToPublicText(string(b), link))
+		}
+		if err := writeFile(out, body); err != nil {
 			return err
 		}
 		fmt.Printf("[INFO] Saved asset: %s -> %s\n", link, out)

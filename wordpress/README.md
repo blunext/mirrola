@@ -22,11 +22,11 @@ scp om:wordpress.tar.gz om:wordpress_db.sql .
 
 ## 2. Rozpakowanie
 
-Bez `wp-config.php` i `.htaccess`, bo lokalne wersje są w gicie (baza z `.env`, błędy PHP do `wp-content/debug.log` zamiast na stronę):
+Bez `wp-config.php` i `.htaccess`, bo lokalne wersje są w gicie. Lokalny `wp-config.php` łączy się z kontenerem `db` i zapisuje błędy PHP do `wp-content/debug.log` zamiast na stronę.
 
 ```bash
 tar -xzf wordpress.tar.gz --exclude='./public_html/wp-config.php' --exclude='./public_html/.htaccess'
-git status public_html   # wp-config.php i .htaccess bez zmian
+git status public_html   # nic; zmieniony wp-config.php lub .htaccess: git checkout -- public_html
 ```
 
 ## 3. Import bazy

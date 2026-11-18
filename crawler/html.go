@@ -43,7 +43,13 @@ func processHTMLAt(ctx context.Context, pageURL, finalURL string, body []byte) (
 	if !write {
 		return assets, links, nil
 	}
-	if err := saveHTML(outputFile, doc); err != nil {
+	var buf bytes.Buffer
+	if err := html.Render(&buf, doc); err != nil {
+		return nil, nil, err
+	}
+	// Last step on the rendered page, so it sees every attribute and script.
+	out := cfg.ToPublicText(buf.String(), pageURL)
+	if err := writeFile(outputFile, strings.NewReader(out)); err != nil {
 		return nil, nil, err
 	}
 	fmt.Printf("[INFO] Saved page: %s -> %s\n", pageURL, outputFile)

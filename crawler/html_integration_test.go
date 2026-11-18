@@ -212,7 +212,8 @@ func TestHTMLProcessing_CanonicalIsAbsoluteOnPublicSite(t *testing.T) {
 			assert.Contains(t, got, `<link rel="Canonical Alternate" href="`+tc.want+`/other/"/>`, "rel is a token list, case-insensitive")
 			assert.Contains(t, got, `href="https://elsewhere.example/x/"`, "a canonical on another host is left alone")
 			assert.Contains(t, got, `<link rel="stylesheet" href="/style.css"/>`, "other links stay relative")
-			assert.Contains(t, got, `<a rel="canonical" href="/post/">`, "only <link> canonicals are absolute")
+			// Attribute order is up to golang.org/x/net/html (it changed in v0.63).
+			assert.Regexp(t, `<a (rel="canonical" href="/post/"|href="/post/" rel="canonical")>`, got, "only <link> canonicals are absolute")
 		})
 	}
 }

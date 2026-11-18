@@ -22,6 +22,10 @@ type Config struct {
 	// outputs tracks which URL produced each output file (nil = no tracking)
 	outputs *outputRegistry
 
+	// source rewrites the crawl source's address to SiteURL in saved text
+	// (nil when crawling the public site itself)
+	source *sourceRewriter
+
 	// HTTP settings
 	UserAgent            string
 	Timeout              time.Duration
