@@ -14,6 +14,7 @@ Mirrola turns a self-managed WordPress blog (production domain `olamundo.pl`, ho
 ```bash
 make crawl                                    # crawl https://olamundo.pl into ~/priv/olamundo (DELAY=0, CONCURRENCY=10; full site ~10 min)
 make serve                                    # preview ~/priv/olamundo on :8081 (8080 is phpMyAdmin)
+make publish                                  # git add -A + commit + push in ~/priv/olamundo (no crawl; run after checking with make serve); the push deploys to Cloudflare Pages
 make crawl URL=http://localhost:8000 DELAY=0  # crawl the local Docker WordPress; DIR=, STRICT=1 also work
 
 go build -o mirrola .                         # build crawler CLI
