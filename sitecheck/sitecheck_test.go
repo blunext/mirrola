@@ -58,6 +58,13 @@ func TestNormalizeDropsVersionsAndNonces(t *testing.T) {
 		string(normalize([]byte(`<a data-slb-asset="123"><script>$.extend(SLB.View.assets, {"123":{"id":5}})</script><!-- generated-on='18 November 2026 21:19' -->`))),
 		string(normalize([]byte(`<a data-slb-asset="987"><script>$.extend(SLB.View.assets, {"987":{"id":5}})</script><!-- generated-on='19 November 2026 08:00' -->`))),
 		"lightbox ids and sitemap timestamps are per request")
+	assert.Equal(t,
+		string(normalize([]byte("<urlset>\n\t<url><loc>/a/</loc></url>\n</urlset>\n<!-- Request ID: 7a3f; Seconds: 0.04 -->"))),
+		string(normalize([]byte("<urlset> <url><loc>/a/</loc></url> </urlset><!-- Request ID: 91bc;\nSeconds: 0.12 -->"))),
+		"comments and whitespace are ignored")
+	assert.NotEqual(t, string(normalize([]byte(`<loc>/a/</loc>`))), string(normalize([]byte(`<loc>/b/</loc>`))))
+	assert.Equal(t, `<p>Keep</p><p>this</p>`, string(normalize([]byte("<!--a--><p>Keep</p>\n<!-- b\n-->\n<p>this</p><!--c-->"))),
+		"each comment is removed on its own (non-greedy), never the content between two comments")
 }
 
 func TestCheck(t *testing.T) {
@@ -78,7 +85,7 @@ func TestCheck(t *testing.T) {
 		"index.html":      page("Home", `<a href="/a/">a</a><a href="/b/">b</a><a href="/gone-before/">g</a>`),
 		"a/index.html":    page("A", `<p>New text</p><p>same</p>`),
 		"c/index.html":    page("C", `<p>C</p><img src="/missing.jpg?ver=1" srcset="/missing-2x.jpg 2x">`),
-		"m/index.html":    strings.Replace(page("M", `<p>M</p>`), "?ver=1", "?ver=9", 1) + `<!-- -->`,
+		"m/index.html":    strings.Replace(page("M", `<p class="x">M</p>`), "?ver=1", "?ver=9", 1) + "\n<!-- per request -->",
 		"s.css":           `body{background:url(/bg.png)} .x{background:url('/nope.png')}`,
 		"bg.png":          "png",
 		"wp-content/p.js": "v2",
@@ -99,7 +106,7 @@ func TestCheck(t *testing.T) {
 	assert.Equal(t, "a/index.html", r.textChanged[0].page)
 	assert.Equal(t, []string{"Old text"}, r.textChanged[0].old)
 	assert.Equal(t, []string{"New text"}, r.textChanged[0].new)
-	assert.Equal(t, []string{"m/index.html"}, r.markupChanged, "?ver= alone is noise, the comment is a real markup change")
+	assert.Equal(t, []string{"m/index.html"}, r.markupChanged, "?ver= and comments are noise, the new class is a real markup change")
 	assert.Equal(t, map[string][]string{".css": {"s.css"}, ".js": {"wp-content/p.js"}}, r.assetsChanged)
 	assert.Equal(t, []string{"old-only.jpg"}, r.removedFiles)
 	assert.Equal(t, []string{"leak.json"}, r.addedFiles)

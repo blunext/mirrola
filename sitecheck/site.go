@@ -121,15 +121,20 @@ var noise = []struct {
 	// Simple Lightbox numbers its images randomly on every request.
 	{regexp.MustCompile(`(data-slb-asset=")[0-9]+`), "${1}"},
 	{regexp.MustCompile(`"[0-9]+":(\{"id":)`), `"":${1}`},
-	// Sitemaps carry the time they were generated.
-	{regexp.MustCompile(`(generated-on=')[^']*`), "${1}"},
+	// HTML/XML comments are invisible and often per request (sitemap plugins
+	// write the generation time, a request id, timings and memory there).
+	{regexp.MustCompile(`(?s)<!--.*?-->`), ""},
+	// Whitespace-only changes (indentation, blank lines) don't matter; text
+	// spacing is covered by the visible-text comparison.
+	{regexp.MustCompile(`\s*([<>])\s*`), "${1}"},
+	{regexp.MustCompile(`\s+`), " "},
 }
 
 func normalize(b []byte) []byte {
 	for _, n := range noise {
 		b = n.re.ReplaceAll(b, []byte(n.repl))
 	}
-	return b
+	return bytes.TrimSpace(b)
 }
 
 // blocks start a new line of visible text.
