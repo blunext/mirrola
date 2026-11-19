@@ -162,3 +162,31 @@ func TestMarkupPatterns(t *testing.T) {
 	r.print(&out, 20)
 	assert.Contains(t, out.String(), "-     2  <a href=\"http://www.facebook.com")
 }
+
+func TestMarkupPatterns_NumbersOnly(t *testing.T) {
+	disqus := func(id, wp string) string {
+		return page("P"+id, `<p>x</p><script id="disqus_embed-js-extra">var embedVars = {"disqusConfig":{"integration":"wordpress 3.1.6 `+wp+`"},"disqusIdentifier":"`+id+` https://olamundo.pl/?p=`+id+`"};</script>`)
+	}
+	oldS, err := loadSite(writeSite(t, map[string]string{"a/index.html": disqus("3257", "7.1.4"), "b/index.html": disqus("12", "7.1.4")}))
+	require.NoError(t, err)
+	newS, err := loadSite(writeSite(t, map[string]string{"a/index.html": disqus("3257", "7.1.5"), "b/index.html": disqus("12", "7.1.5")}))
+	require.NoError(t, err)
+
+	r := check(oldS, newS, nil)
+	assert.False(t, r.failed())
+	assert.Len(t, r.markupChanged, 2)
+	assert.Empty(t, r.markupRemoved, "masked, the tags are the same")
+	assert.Empty(t, r.markupAdded)
+	require.Len(t, r.markupNumbers, 1, "different post ids, one change")
+	assert.Equal(t, pattern{`…integration":"wordpress 3.1.6 [7.1.4 → 7.1.5]"},"disqusIdent…`, 2}, r.markupNumbers[0])
+
+	var out strings.Builder
+	r.print(&out, 20)
+	assert.Contains(t, out.String(), `~     2  …integration":"wordpress 3.1.6 [7.1.4 → 7.1.5]`)
+}
+
+func TestNumberFragment(t *testing.T) {
+	assert.Equal(t, `width="[500 → 640]" height="330"`, numberFragment(`width="500" height="330"`, `width="640" height="330"`))
+	assert.Equal(t, `…xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx[1 → 2]yyyyyyyyyyyyyyy…`, numberFragment(strings.Repeat("x", 40)+"1"+strings.Repeat("y", 20), strings.Repeat("x", 40)+"2"+strings.Repeat("y", 20)), "30 characters before, 15 after")
+	assert.Equal(t, `a [12 → 13] b`, numberFragment(`a 12 b`, `a 13 b`), "the whole number, not just the differing digit")
+}

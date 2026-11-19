@@ -24,6 +24,7 @@ type report struct {
 	markupChanged            []string            // same text, different markup
 	markupRemoved            []pattern           // tags gone from markup-changed pages
 	markupAdded              []pattern           // tags new in markup-changed pages
+	markupNumbers            []pattern           // number-only changes, as "context[old → new]context"
 	assetsChanged            map[string][]string // by extension
 	brokenNew                map[string][]string // target -> pages linking to it; not broken in old
 	brokenOld                int                 // broken links already present in the baseline
@@ -80,13 +81,13 @@ func check(oldS, newS *site, forbid []string) *report {
 		}
 	}
 
-	removed, added := map[string][]string{}, map[string][]string{}
+	removed, added, numbers := map[string][]string{}, map[string][]string{}, map[string][]string{}
 	for _, p := range r.markupChanged {
-		if rm, ad, err := markupDelta(oldS.root, newS.root, p); err == nil {
-			removed[p], added[p] = rm, ad
+		if rm, ad, nu, err := markupDelta(oldS.root, newS.root, p); err == nil {
+			removed[p], added[p], numbers[p] = rm, ad, nu
 		}
 	}
-	r.markupRemoved, r.markupAdded = topPatterns(removed), topPatterns(added)
+	r.markupRemoved, r.markupAdded, r.markupNumbers = topPatterns(removed), topPatterns(added), topPatterns(numbers)
 
 	oldBroken := brokenLinks(oldS)
 	r.brokenOld = len(oldBroken)
@@ -277,6 +278,7 @@ func (r *report) print(w io.Writer, max int) {
 	}
 	patterns("-", r.markupRemoved)
 	patterns("+", r.markupAdded)
+	patterns("~", r.markupNumbers)
 
 	exts := make([]string, 0, len(r.assetsChanged))
 	for e := range r.assetsChanged {
