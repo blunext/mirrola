@@ -17,7 +17,9 @@ LOCAL=http://localhost:8000
 SSH_OPTS=(-o WarnWeakCrypto=no)
 
 die() { echo "BŁĄD: $*" >&2; exit 1; }
-step() { echo; echo "== $*"; }
+step() { echo; echo "== $*"; step_start=$SECONDS; }
+# Prints how long the current step took.
+took() { echo "   (gotowe w $(( (SECONDS - step_start) / 60 )) min $(( (SECONDS - step_start) % 60 )) s)"; }
 
 skip_download=false
 case "${1:-}" in
@@ -36,13 +38,22 @@ read -r -p "Wpisz 'tak', aby kontynuować: " answer || die "przerwano"
 [ "$answer" = tak ] || die "przerwano"
 
 if ! $skip_download; then
-  step "1. Eksport na serwerze ($HOST)"
+  step "1a. Dump bazy na serwerze ($HOST)"
   echo "Hasło do bazy $DB:"
   ssh -q -t "${SSH_OPTS[@]}" "$HOST" "mysqldump --single-transaction --default-character-set=utf8mb4 --no-tablespaces -u $DB -p $DB > wordpress_db.sql"
+  ssh "${SSH_OPTS[@]}" "$HOST" "ls -lh wordpress_db.sql"
+  took
+
+  step "1b. Pakowanie plików na serwerze (~1 GB, kilka minut; kropka = ok. 20 MB)"
   # wflogs: Wordfence rewrites it constantly ("file changed as we read it").
+  # --checkpoint: a dot every 2000 records (10 KB each) of the archive (GNU tar).
   # shellcheck disable=SC2029  # $REMOTE_DIR is meant to be filled in here
-  ssh "${SSH_OPTS[@]}" "$HOST" "tar -czf wordpress.tar.gz -C $REMOTE_DIR --exclude='./public_html/wp-content/cache' --exclude='./public_html/wp-content/wflogs' ./public_html"
+  ssh "${SSH_OPTS[@]}" "$HOST" "tar -czf wordpress.tar.gz --checkpoint=2000 --checkpoint-action=dot -C $REMOTE_DIR --exclude='./public_html/wp-content/cache' --exclude='./public_html/wp-content/wflogs' ./public_html && echo && ls -lh wordpress.tar.gz"
+  took
+
+  step "1c. Pobieranie na Maca"
   scp "${SSH_OPTS[@]}" "$HOST:wordpress_db.sql" "$HOST:wordpress.tar.gz" .
+  took
 fi
 
 step "Sprawdzenie pobranych plików"
