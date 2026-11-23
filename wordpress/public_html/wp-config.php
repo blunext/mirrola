@@ -77,7 +77,6 @@ define('NONCE_SALT',       olamundo_env('WORDPRESS_NONCE_SALT'));
  * Other customizations.
  */
 define('FS_METHOD','direct');define('FS_CHMOD_DIR',0755);define('FS_CHMOD_FILE',0644);
-define('WP_TEMP_DIR',dirname(__FILE__).'/wp-content/uploads');
 
 /**
  * Turn off automatic updates since these are managed upstream.
@@ -112,9 +111,7 @@ define('WPLANG', 'pl_PL');
  * It is strongly recommended that plugin and theme developers use WP_DEBUG
  * in their development environments.
  */
-define('WP_DEBUG', true);
-define('WP_DEBUG_DISPLAY', false);   // nie pokazuj błędów na stronie (trafiłyby do crawla)
-define('WP_DEBUG_LOG', true);        // zapisuj je do wp-content/debug.log
+define('WP_DEBUG', false);
 
 /* That's all, stop editing! Happy blogging. */
 
