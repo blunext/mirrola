@@ -20,6 +20,12 @@
 #                              # pages, changed visible text, broken internal links.
 #                              # Report in .check/report.txt. Run after every plugin/WP change.
 #
+#   make snapshot              # back up the local WordPress (files + DB dump) with restic
+#                              # (wordpress/snapshot.sh; repo and password in wordpress/.env)
+#   make snapshot MSG="..."    # same, with the message as a snapshot tag
+#   make snapshots             # list snapshots
+#   make snapshot-check        # verify the restic repository (READ_DATA=1: read every file)
+#
 #   make sync FORCE=1          # replace the local WordPress (files + DB) with a copy
 #                              # from the old host (wordpress/sync-from-host.sh, interactive).
 #                              # Refuses without FORCE=1: the local copy is the source of
@@ -44,13 +50,16 @@ BASE        ?= HEAD
 PREVIEW     ?= development
 PRODUCTION  ?= main
 FORCE       ?=
+READ_DATA   ?=
 MSG         ?= Update site $(shell date '+%Y-%m-%d %H:%M')
 
 BIN := mirrola
 # Marks a directory as crawler output that clean-site may empty.
 MARKER := .mirrola-site
 
-.PHONY: build test clean-site crawl serve publish release sync sync-skip check
+snapshot: export SNAPSHOT_MSG = $(if $(filter command line,$(origin MSG)),$(MSG))
+
+.PHONY: build test clean-site crawl serve publish release snapshot snapshots snapshot-check sync sync-skip check
 
 build:
 	go build -o $(BIN) .
@@ -138,6 +147,18 @@ release:
 		git branch -f $(PRODUCTION) origin/$(PRODUCTION); \
 	fi && \
 	echo "Released $$(git rev-parse --short origin/$(PRODUCTION)); Pages deploys olamundo.pl."
+
+# restic backups of the local WordPress (wordpress/snapshot.sh). MSG is passed
+# only when given on the command line (its default is publish's commit
+# message), and through the environment, so quotes or $ in it are safe.
+snapshot:
+	./wordpress/snapshot.sh backup
+
+snapshots:
+	@./wordpress/snapshot.sh list
+
+snapshot-check:
+	./wordpress/snapshot.sh check $(if $(READ_DATA),--read-data)
 
 # Pulls WordPress from the old host into the local Docker setup (README steps
 # 1-4). Since 2026-11-23 the local copy is the source of truth (olamundo.pl is
