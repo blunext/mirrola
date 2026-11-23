@@ -21,7 +21,7 @@
 #                              # Report in .check/report.txt. Run after every plugin/WP change.
 #
 #   make snapshot              # back up the local WordPress (files + DB dump) with restic
-#                              # (wordpress/snapshot.sh; repo and password in wordpress/.env)
+#                              # to Cloudflare R2 (wordpress/snapshot.sh; settings in wordpress/.env)
 #   make snapshot MSG="..."    # same, with the message as a snapshot tag
 #   make snapshots             # list snapshots
 #   make snapshot-check        # verify the restic repository (READ_DATA=1: read every file)

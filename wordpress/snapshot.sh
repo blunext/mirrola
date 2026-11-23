@@ -7,8 +7,9 @@
 #   ./snapshot.sh list                # list snapshots
 #   ./snapshot.sh check [--read-data] # verify the repository (--read-data reads every file)
 #
-# The repository and its password come only from wordpress/.env
-# (RESTIC_REPOSITORY, RESTIC_PASSWORD). Every RESTIC_* / AWS_* variable of the
+# The repository (the Cloudflare R2 bucket "olamundo"), its password and the
+# bucket's R2 token come only from wordpress/.env (RESTIC_REPOSITORY,
+# RESTIC_PASSWORD, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY). Every RESTIC_* / AWS_* variable of the
 # calling shell is dropped first, so other restic setups on this Mac are never
 # touched, and the script refuses any repository other than the blog's.
 # COMPOSE_* is dropped too, so docker compose always uses this directory's
@@ -17,8 +18,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-# The blog's repositories: the local one now, the R2 bucket olamundo-wp later.
-LOCAL_REPO="$HOME/priv/olamundo-wp-restic"
+# The blog's repository: the R2 bucket "olamundo" (s3:https://<account>.r2.cloudflarestorage.com/olamundo).
+# The account id is 32 hex characters.
+REPO_REGEX='^s3:https://[0-9a-f]{32}\.r2\.cloudflarestorage\.com/olamundo$'
 HOST=olamundo-wp
 DUMP=db/olamundo.sql
 EXCLUDES=(cache wflogs upgrade upgrade-temp-backup)
@@ -34,12 +36,12 @@ done
 # special characters. Exported variables don't show up in ps arguments.
 while IFS='=' read -r key value; do
   export "$key=${value%$'\r'}"
-done < <(grep -E '^RESTIC_(REPOSITORY|PASSWORD)=' .env)
-[ -n "${RESTIC_PASSWORD:-}" ] || die "brak RESTIC_PASSWORD w wordpress/.env"
-case ${RESTIC_REPOSITORY:-} in
-  "$LOCAL_REPO" | s3:*/olamundo-wp) ;;
-  *) die "RESTIC_REPOSITORY w wordpress/.env to nie repozytorium bloga ($LOCAL_REPO albo s3:…/olamundo-wp)" ;;
-esac
+done < <(grep -E '^(RESTIC_(REPOSITORY|PASSWORD)|AWS_(ACCESS_KEY_ID|SECRET_ACCESS_KEY))=' .env)
+for var in RESTIC_PASSWORD AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+  [ -n "${!var:-}" ] || die "brak $var w wordpress/.env"
+done
+[[ ${RESTIC_REPOSITORY:-} =~ $REPO_REGEX ]] \
+  || die "RESTIC_REPOSITORY w wordpress/.env to nie repozytorium bloga (s3:https://<account-id>.r2.cloudflarestorage.com/olamundo)"
 
 backup() {
   local msg=$1 running
