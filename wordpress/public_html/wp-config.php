@@ -29,8 +29,6 @@ function olamundo_env($name) {
 
 // ** MySQL settings - You can get this info from your web host ** //
 /** The name of the database for WordPress */
-// define('WP_CACHE', true); //Added by WP-Cache Manager
-// define( 'WPCACHEHOME', '/home/olamundo/domains/olamundo.pl/public_html/wp-content/plugins/wp-super-cache/' ); //Added by WP-Cache Manager
 
 define('DB_NAME', olamundo_env('WORDPRESS_DB_NAME'));
 
@@ -77,6 +75,7 @@ define('NONCE_SALT',       olamundo_env('WORDPRESS_NONCE_SALT'));
  * Other customizations.
  */
 define('FS_METHOD','direct');define('FS_CHMOD_DIR',0755);define('FS_CHMOD_FILE',0644);
+define('WP_POST_REVISIONS', 3);   // keep only the 3 newest revisions per post
 
 /**
  * Turn off automatic updates since these are managed upstream.
