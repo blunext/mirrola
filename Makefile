@@ -23,6 +23,8 @@
 #   make start                 # put the latest R2 snapshot into the local WordPress (files
 #                              # volume: only differences; DB: replaced) and start it.
 #                              # Whatever wasn't snapshotted is lost.
+#   make stop [MSG="..."]      # asks whether to push the changes to R2 (make snapshot),
+#                              # then stops WordPress and the DB
 #   make snapshot              # back up the local WordPress (files + DB dump) with restic
 #                              # to Cloudflare R2 (tools container; settings in wordpress/.env)
 #   make snapshot MSG="..."    # same, with the message as a snapshot tag
@@ -65,7 +67,7 @@ snapshot: export SNAPSHOT_MSG = $(if $(filter command line,$(origin MSG)),$(MSG)
 # or the crawler changed (a no-op otherwise).
 TOOLS = cd wordpress && docker compose run --rm --build
 
-.PHONY: build test clean-site crawl serve publish release start snapshot snapshots snapshot-check snapshot-init sync sync-skip check
+.PHONY: build test clean-site crawl serve publish release start stop snapshot snapshots snapshot-check snapshot-init sync sync-skip check
 
 build:
 	go build -o $(BIN) .
@@ -175,6 +177,19 @@ start:
 	$(TOOLS) tools-restore start
 	cd wordpress && docker compose up -d --wait wordpress
 	@echo "WordPress: $(URL)"
+
+# Ends a session: asks whether to push the changes to R2 first (t/n, no
+# default), then stops the whole stack (data stays in the volumes). A failed
+# snapshot stops nothing, so it can be retried while WordPress still runs.
+stop:
+	@while :; do \
+		printf 'Wypchnąć zmiany do R2? (t/n) '; read -r answer || exit 1; \
+		case "$$answer" in \
+			t) $(MAKE) --no-print-directory snapshot || exit 1; break ;; \
+			n) echo "Bez snapshotu: niewypchnięte zmiany przepadną przy następnym make start."; break ;; \
+		esac; \
+	done
+	cd wordpress && docker compose stop
 
 # Creates the restic repository (once, for a new bucket).
 snapshot-init:

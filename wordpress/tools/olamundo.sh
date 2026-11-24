@@ -113,7 +113,10 @@ snapshot() {
   ls -lh "$DUMP"
 
   echo "== Snapshot ($RESTIC_REPOSITORY)"
-  local args=(--host "$HOST" --exclude .DS_Store --exclude "$DATA/$MARKER")
+  # --ignore-ctime: make start restores every file's metadata (mode, times),
+  # which bumps its ctime even when the file is unchanged; mtime and size are
+  # restored exactly, so they are enough to skip unchanged files.
+  local args=(--host "$HOST" --ignore-ctime --exclude .DS_Store --exclude "$DATA/$MARKER")
   for dir in "${EXCLUDES[@]}"; do
     args+=(--exclude "$DATA/public_html/wp-content/$dir")
   done

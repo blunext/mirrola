@@ -27,6 +27,7 @@ make publish                                  # git add -A + commit + push of th
 make release                                  # fast-forward main to origin/development and push it (no --force; refuses if development is not pushed); Pages deploys olamundo.pl
 make sync / make sync-skip                    # obsolete (refuse): the old host import (wordpress/sync-from-host.sh) wrote to the old public_html; removed in the core's cleanup step
 make start                                    # latest R2 snapshot → local WordPress (wp_files volume: only differences; DB replaced; wp-config.php/.htaccess from wordpress/config), then start it; unsnapshotted changes are lost. Leaves the marker .olamundo-restored in the volume; make snapshot refuses without it (a stock core from a plain "docker compose up" on an empty volume must never become the latest snapshot)
+make stop [MSG="..."]                         # asks "push to R2? (t/n)" (t → make snapshot; a failed snapshot stops nothing), then docker compose stop
 make snapshot [MSG="..."]                     # restic backup of the local WordPress to R2 in the tools container: DB dump + public_html, then retention; MSG becomes a tag
 make snapshots                                # list snapshots
 make snapshot-check [READ_DATA=1]             # restic check (READ_DATA=1 reads every pack)
