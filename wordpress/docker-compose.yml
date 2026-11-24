@@ -89,8 +89,36 @@ services:
     networks:
       - wordpress_network
 
+  # Tools: snapshots to R2 (restic), later crawl and publish. Built from this
+  # repository (wordpress/tools/Dockerfile); run through make, e.g.
+  # docker compose run --rm --build tools snapshot
+  tools:
+    build:
+      context: ..
+      dockerfile: wordpress/tools/Dockerfile
+    image: olamundo-tools
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    # The whole .env, read by compose itself: unlike ${VAR} interpolation,
+    # variables of the calling shell (e.g. a private RESTIC_REPOSITORY) can't
+    # override it.
+    env_file: .env
+    volumes:
+      - ./public_html:/data/public_html:ro
+      - restic_cache:/cache
+      # The DB dump exists only in memory.
+      - type: tmpfs
+        target: /data/db
+        tmpfs:
+          mode: 01777
+    networks:
+      - wordpress_network
+
 volumes:
   db_data:
+  restic_cache:
   wordpress_data:
 
 networks:

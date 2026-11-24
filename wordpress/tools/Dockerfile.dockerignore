@@ -1,0 +1,10 @@
+# Build context is the repository root: send only what the image needs
+# (wordpress/public_html alone is ~700 MB).
+*
+!go.mod
+!go.sum
+!*.go
+!crawler/
+!sitecheck/
+!server/
+!wordpress/tools/olamundo.sh

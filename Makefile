@@ -21,7 +21,7 @@
 #                              # Report in .check/report.txt. Run after every plugin/WP change.
 #
 #   make snapshot              # back up the local WordPress (files + DB dump) with restic
-#                              # to Cloudflare R2 (wordpress/snapshot.sh; settings in wordpress/.env)
+#                              # to Cloudflare R2 (tools container; settings in wordpress/.env)
 #   make snapshot MSG="..."    # same, with the message as a snapshot tag
 #   make snapshots             # list snapshots
 #   make snapshot-check        # verify the restic repository (READ_DATA=1: read every file)
@@ -58,8 +58,11 @@ BIN := mirrola
 MARKER := .mirrola-site
 
 snapshot: export SNAPSHOT_MSG = $(if $(filter command line,$(origin MSG)),$(MSG))
+# The tools container (wordpress/tools): --build rebuilds it when the scripts
+# or the crawler changed (a no-op otherwise).
+TOOLS = cd wordpress && docker compose run --rm --build
 
-.PHONY: build test clean-site crawl serve publish release snapshot snapshots snapshot-check sync sync-skip check
+.PHONY: build test clean-site crawl serve publish release snapshot snapshots snapshot-check snapshot-init sync sync-skip check
 
 build:
 	go build -o $(BIN) .
@@ -148,17 +151,22 @@ release:
 	fi && \
 	echo "Released $$(git rev-parse --short origin/$(PRODUCTION)); Pages deploys olamundo.pl."
 
-# restic backups of the local WordPress (wordpress/snapshot.sh). MSG is passed
-# only when given on the command line (its default is publish's commit
-# message), and through the environment, so quotes or $ in it are safe.
+# restic backups of the local WordPress to R2, in the tools container
+# (wordpress/tools/olamundo.sh). MSG is passed only when given on the command
+# line (its default is publish's commit message), and through the environment,
+# so quotes or $ in it are safe.
 snapshot:
-	./wordpress/snapshot.sh backup
+	$(TOOLS) -e SNAPSHOT_MSG tools snapshot
 
 snapshots:
-	@./wordpress/snapshot.sh list
+	@$(TOOLS) tools snapshots
 
 snapshot-check:
-	./wordpress/snapshot.sh check $(if $(READ_DATA),--read-data)
+	$(TOOLS) tools check $(if $(READ_DATA),--read-data)
+
+# Creates the restic repository (once, for a new bucket).
+snapshot-init:
+	$(TOOLS) tools init
 
 # Pulls WordPress from the old host into the local Docker setup (README steps
 # 1-4). Since 2026-11-23 the local copy is the source of truth (olamundo.pl is
