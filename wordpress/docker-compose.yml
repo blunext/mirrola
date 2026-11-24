@@ -121,6 +121,12 @@ services:
         target: /data/db
         tmpfs:
           mode: 01777
+      # The site repo (blunext/olamundo), cloned on first use.
+      - site:/site
+      # This computer's deploy key for the site repo (gitignored).
+      - ./deploy:/run/deploy:ro
+      # make check's report (.check/report.txt, crawl.log).
+      - ../.check:/report
     networks:
       - wordpress_network
 
@@ -140,6 +146,7 @@ volumes:
   wp_files:
   # restic's cache (owned by uid 33, the tools user)
   tools_cache:
+  site:
 
 networks:
   wordpress_network:

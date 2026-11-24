@@ -68,4 +68,4 @@ wp cache flush
 
 ## 5. Crawl
 
-W katalogu głównym repo: `make crawl URL=http://localhost:8000`, potem `make serve`.
+W katalogu głównym repo: `make crawl`, potem `make serve`.

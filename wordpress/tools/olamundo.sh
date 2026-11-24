@@ -7,7 +7,12 @@
 #                        (service tools-restore, WordPress stopped; run by make start)
 #   snapshot ["message"] dump the DB, snapshot the WordPress files + dump to R2, apply retention
 #   snapshots            list snapshots
-#   check [--read-data]  verify the repository (--read-data reads every pack)
+#   repo-check [--read-data]  verify the restic repository (--read-data reads every pack)
+#   crawl                crawl the local WordPress into the site repo (/site/olamundo)
+#   serve                preview the site repo on :8081
+#   publish              commit the crawl, push the preview branch
+#   release              fast-forward the production branch to the pushed preview
+#   site-check           crawl into a throwaway dir, compare with the site repo at $BASE (default origin/development)
 #
 # The container gets wordpress/.env through compose's env_file (variables of
 # the calling shell can't override it), so RESTIC_REPOSITORY, RESTIC_PASSWORD
@@ -29,6 +34,20 @@ MARKER=public_html/.olamundo-restored
 EXCLUDES=(cache wflogs upgrade upgrade-temp-backup)
 # The blog's repository: the R2 bucket "olamundo"; the account id is 32 hex characters.
 REPO_REGEX='^s3:https://[0-9a-f]{32}\.r2\.cloudflarestorage\.com/olamundo$'
+
+# The site repo (Cloudflare Pages): preview and production branches.
+SITE=/site/olamundo
+SITE_REMOTE=git@github.com:blunext/olamundo.git
+SITE_URL=https://olamundo.pl
+PREVIEW=development
+PRODUCTION=main
+DEPLOY_KEY=/run/deploy/olamundo_deploy_key
+# Written by a complete crawl, removed when it starts and after a push:
+# publish refuses without it, so an emptied or half-written tree (crawl failed
+# or was interrupted after the cleanup) is never published.
+CRAWL_OK=$SITE/.git/olamundo-crawl-ok
+# Kept by the crawl's cleanup: Pages config files (and top-level dotfiles).
+PAGES_FILES=(_headers _redirects _routes.json _worker.js functions)
 
 die() { echo "BŁĄD: $*" >&2; exit 1; }
 
@@ -131,12 +150,180 @@ snapshot() {
   restic forget --host "$HOST" --group-by host --prune --keep-last 10 --keep-weekly 8 --keep-monthly 12
 }
 
+# git over SSH with this computer's deploy key, GitHub's pinned host key, and
+# a commit identity naming the computer (PUBLISHER in .env), no real e-mail.
+git_setup() {
+  [ -f "$DEPLOY_KEY" ] || die "brak klucza wordpress/deploy/olamundo_deploy_key"
+  [ -n "${PUBLISHER:-}" ] || die "brak PUBLISHER w wordpress/.env (nazwa komputera, np. mac)"
+  # ssh wants a private key only its user can read.
+  install -m 600 "$DEPLOY_KEY" /tmp/deploy_key
+  export GIT_SSH_COMMAND="ssh -i /tmp/deploy_key -o IdentitiesOnly=yes -o UserKnownHostsFile=/etc/olamundo/known_hosts -o StrictHostKeyChecking=yes"
+  export GIT_AUTHOR_NAME="olamundo publish ($PUBLISHER)" GIT_AUTHOR_EMAIL=noreply@olamundo.pl
+  export GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME" GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+  # The volume is owned by uid 33, which has no passwd entry.
+  export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0='*'
+}
+
+# Clones the site repo into the volume on first use: shallow (the crawl
+# regenerates everything, history isn't needed), both branches.
+site_clone() {
+  [ -d "$SITE/.git" ] && return
+  echo "== Klon $SITE_REMOTE (płytki)"
+  git clone -q --depth 1 --no-single-branch --branch "$PREVIEW" "$SITE_REMOTE" "$SITE"
+}
+
+site_guard() {
+  [ -f "$SITE/.mirrola-site" ] || die "$SITE nie wygląda na repo strony (brak .mirrola-site)"
+}
+
+# WordPress answers only to its own address (siteurl http://localhost:8000):
+# forward localhost:8000 in this container to the wordpress service. A TCP
+# forward keeps the Host header as the crawler sends it.
+wp_proxy() {
+  getent hosts wordpress >/dev/null || die "kontener wordpress nie działa (make start)"
+  socat TCP-LISTEN:8000,bind=127.0.0.1,fork,reuseaddr TCP:wordpress:8000 2>/dev/null &
+  local i
+  for i in $(seq 30); do
+    curl -fsS -o /dev/null "$LOCAL_URL/" 2>/dev/null && return
+    sleep 1
+  done
+  die "lokalny WordPress nie odpowiada (make start)"
+}
+
+crawl() {
+  git_setup
+  site_clone
+  site_guard
+  echo "== Repo strony = origin/$PREVIEW"
+  git -C "$SITE" fetch -q --depth 1 origin
+  git -C "$SITE" checkout -q "$PREVIEW"
+  # The reset also drops a commit whose push failed: it is only a crawl
+  # result, regenerated right below (only its MSG is lost). Refusing instead
+  # would leave the repo stuck once origin moved (another computer, a file
+  # edited on GitHub): a shallow fetch can't tell such a commit from a stale one.
+  rm -f "$CRAWL_OK"
+  git -C "$SITE" reset -q --hard "origin/$PREVIEW"
+  # Emptied first, so pages removed from WordPress disappear from the mirror
+  # too; top-level dotfiles (.git, .gitignore, the marker) and Pages config stay.
+  local keep=()
+  for f in "${PAGES_FILES[@]}"; do keep+=(! -name "$f"); done
+  find "$SITE" -mindepth 1 -maxdepth 1 ! -name '.*' "${keep[@]}" -exec rm -rf {} +
+  wp_proxy
+  echo "== Crawl $LOCAL_URL"
+  mirrola -url "$LOCAL_URL" -site-url "$SITE_URL" -dir "$SITE" \
+    -delay "${DELAY:-0}" -concurrency "${CONCURRENCY:-10}" $([ "${STRICT:-}" = 1 ] && echo -strict)
+  git -C "$SITE" add -A
+  touch "$CRAWL_OK"
+  echo "== Zmiany względem origin/$PREVIEW:"
+  git -C "$SITE" --no-pager diff --cached --shortstat
+  echo "Dalej: make serve (podgląd na Macu), potem make publish"
+}
+
+serve() {
+  site_guard
+  mirrola-server -dir "$SITE" -port 8081
+}
+
+publish() {
+  git_setup
+  site_guard
+  cd "$SITE"
+  local branch
+  branch=$(git rev-parse --abbrev-ref HEAD)
+  [ "$branch" = "$PREVIEW" ] || die "repo strony jest na '$branch', nie na $PREVIEW"
+  [ -f "$CRAWL_OK" ] || die "brak udanego crawla od ostatniej publikacji (przerwany albo nieudany?); najpierw make crawl"
+  git add -A
+  if git diff --cached --quiet; then
+    echo "Nic nowego do commita."
+  else
+    git --no-pager diff --cached --shortstat
+    git commit -q -m "${PUBLISH_MSG:-Update site $(date '+%Y-%m-%d %H:%M')}"
+  fi
+  if [ "$(git rev-list --count "origin/$PREVIEW..HEAD")" = 0 ]; then
+    echo "Nic do wypchnięcia: $PREVIEW = origin/$PREVIEW."
+    return
+  fi
+  git push -q origin "HEAD:refs/heads/$PREVIEW" \
+    || die "push odrzucony (origin/$PREVIEW się zmienił, np. publikacja z innego komputera?); zrób jeszcze raz make crawl, potem make publish"
+  rm -f "$CRAWL_OK"
+  echo "Wypchnięto $(git rev-parse --short HEAD) na $PREVIEW; Pages buduje podgląd https://development.olamundo-3xg.pages.dev"
+  echo "Sprawdź podgląd, potem: make release"
+}
+
+release() {
+  git_setup
+  site_guard
+  cd "$SITE"
+  git fetch -q --depth 1 origin
+  # What goes live is origin/development, i.e. exactly what the preview shows;
+  # a local crawl that wasn't published isn't part of it.
+  [ "$(git rev-parse HEAD)" = "$(git rev-parse "origin/$PREVIEW")" ] \
+    || echo "Uwaga: lokalne repo strony różni się od origin/$PREVIEW (nieopublikowany crawl?); wypuszczam origin/$PREVIEW, czyli to, co pokazuje podgląd."
+  if [ "$(git rev-parse "origin/$PRODUCTION")" = "$(git rev-parse "origin/$PREVIEW")" ]; then
+    echo "Nic do wypuszczenia: $PRODUCTION = $PREVIEW."
+    return
+  fi
+  # git checks the fast-forward locally, and a shallow clone has no history to
+  # see that main is an ancestor of development: deepen until it does, or
+  # until the whole history is there (then main has diverged: refuse).
+  local i
+  for i in $(seq 30); do
+    git merge-base --is-ancestor "origin/$PRODUCTION" "origin/$PREVIEW" && break
+    [ "$(git rev-parse --is-shallow-repository)" = true ] \
+      || die "$PRODUCTION nie jest przodkiem $PREVIEW (rozjechane gałęzie); nic nie wypuszczono"
+    # No refspec: deepens both branches, so a diverged main ends the loop
+    # (repository no longer shallow) instead of deepening one side forever.
+    git fetch -q --deepen=20 origin
+  done
+  git merge-base --is-ancestor "origin/$PRODUCTION" "origin/$PREVIEW" \
+    || die "nie udało się potwierdzić, że $PRODUCTION jest przodkiem $PREVIEW; nic nie wypuszczono"
+  echo "Wypuszczam na $PRODUCTION (olamundo.pl):"
+  git --no-pager log --oneline "origin/$PRODUCTION..origin/$PREVIEW"
+  # No --force: GitHub refuses anything but a fast-forward.
+  git push -q origin "refs/remotes/origin/$PREVIEW:refs/heads/$PRODUCTION"
+  git fetch -q --depth 1 origin
+  echo "Wypuszczono $(git rev-parse --short "origin/$PRODUCTION"); Pages buduje olamundo.pl."
+}
+
+# Compares a fresh crawl with the site repo at $BASE (default
+# origin/development, fetched first: what the preview shows; the clone is
+# shallow, so older commits aren't there). Exit status 1: look at the [FAIL]
+# sections before publishing.
+site_check() {
+  git_setup
+  site_clone
+  site_guard
+  git -C "$SITE" fetch -q --depth 1 origin
+  local base=${BASE:-origin/$PREVIEW}
+  rm -f /report/report.txt /report/crawl.log   # never leave a previous run's result behind
+  mkdir -p /tmp/baseline /tmp/new
+  git -C "$SITE" archive "$base" | tar -x -C /tmp/baseline
+  echo "baseline: $(git -C "$SITE" log -1 --format='%h %ad %s' --date=short "$base")"
+  wp_proxy
+  echo "crawling $LOCAL_URL (log: .check/crawl.log) ..."
+  if ! mirrola -url "$LOCAL_URL" -site-url "$SITE_URL" -dir /tmp/new \
+      -delay "${DELAY:-0}" -concurrency "${CONCURRENCY:-10}" >/report/crawl.log 2>&1; then
+    echo "CRAWL FAILED:"; tail -n 20 /report/crawl.log; exit 2
+  fi
+  grep -E '^\[(WARN|ERROR)\]' /report/crawl.log | head -n 20 || true
+  echo
+  local status=0
+  sitecheck -old /tmp/baseline -new /tmp/new -forbid localhost:8000 >/report/report.txt || status=$?
+  cat /report/report.txt
+  exit "$status"
+}
+
 case ${1:-} in
   init) restic init ;;
   start) start ;;
   snapshot) snapshot "${2:-${SNAPSHOT_MSG:-}}" ;;
   snapshots) restic snapshots --host "$HOST" ;;
-  check)
-    case ${2:-} in "" | --read-data) restic check ${2:+"$2"} ;; *) die "check przyjmuje tylko --read-data" ;; esac ;;
-  *) die "użycie: olamundo init | start | snapshot [\"opis\"] | snapshots | check [--read-data]" ;;
+  repo-check)
+    case ${2:-} in "" | --read-data) restic check ${2:+"$2"} ;; *) die "repo-check przyjmuje tylko --read-data" ;; esac ;;
+  crawl) crawl ;;
+  serve) serve ;;
+  publish) publish ;;
+  release) release ;;
+  site-check) site_check ;;
+  *) die "użycie: olamundo init | start | snapshot [\"opis\"] | snapshots | repo-check [--read-data] | crawl | serve | publish | release | site-check" ;;
 esac
