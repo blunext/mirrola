@@ -1,7 +1,7 @@
 .env
-public_html/*
-!public_html/wp-config.php
-!public_html/.htaccess
+# The old bind-mounted WordPress files (before the wp_files volume); kept as a
+# fallback until the core is finished, then removed.
+public_html/
 *.tar.gz
 *.sql
 *.sql.zip

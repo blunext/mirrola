@@ -45,7 +45,9 @@ services:
     container_name: wordpress
     environment: *wp-env
     volumes:
-      - ./public_html:/var/www/html
+      # WordPress files live in a Docker volume, filled by "make start" from
+      # the latest R2 snapshot (wp-config.php and .htaccess come from config/).
+      - wp_files:/var/www/html
       - ./apache/ports.conf:/etc/apache2/ports.conf:ro
       - ./apache/000-default.conf:/etc/apache2/sites-available/000-default.conf:ro
     networks:
@@ -55,6 +57,10 @@ services:
       interval: 1m
       timeout: 10s
       retries: 3
+      # Checked every 2 s right after a start, so "up --wait" (make start)
+      # returns as soon as WordPress answers.
+      start_period: 1m
+      start_interval: 2s
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin:latest
@@ -85,14 +91,16 @@ services:
         condition: service_healthy
     environment: *wp-env
     volumes:
-      - ./public_html:/var/www/html
+      - wp_files:/var/www/html
     networks:
       - wordpress_network
 
-  # Tools: snapshots to R2 (restic), later crawl and publish. Built from this
-  # repository (wordpress/tools/Dockerfile); run through make, e.g.
-  # docker compose run --rm --build tools snapshot
-  tools:
+  # Tools: snapshots to R2 (restic), start from R2, later crawl and publish.
+  # Built from this repository (wordpress/tools/Dockerfile); run through make,
+  # e.g. docker compose run --rm --build tools snapshot.
+  # "tools" sees the WordPress files read-only (snapshots); "tools-restore"
+  # writes them (make start, with WordPress stopped).
+  tools: &tools
     build:
       context: ..
       dockerfile: wordpress/tools/Dockerfile
@@ -106,8 +114,8 @@ services:
     # override it.
     env_file: .env
     volumes:
-      - ./public_html:/data/public_html:ro
-      - restic_cache:/cache
+      - wp_files:/data/public_html:ro
+      - tools_cache:/cache
       # The DB dump exists only in memory.
       - type: tmpfs
         target: /data/db
@@ -116,10 +124,22 @@ services:
     networks:
       - wordpress_network
 
+  tools-restore:
+    <<: *tools
+    volumes:
+      - wp_files:/data/public_html
+      - ./config:/config:ro
+      - tools_cache:/cache
+      - type: tmpfs
+        target: /data/db
+        tmpfs:
+          mode: 01777
+
 volumes:
   db_data:
-  restic_cache:
-  wordpress_data:
+  wp_files:
+  # restic's cache (owned by uid 33, the tools user)
+  tools_cache:
 
 networks:
   wordpress_network:

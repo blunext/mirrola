@@ -14,19 +14,24 @@ RUN CGO_ENABLED=0 go build -o /out/mirrola . \
 # version here.
 FROM restic/restic:0.20.0 AS restic
 
-# WP-CLI image (Alpine, PHP 8.3, MariaDB client); runs as www-data (uid 82).
+# WP-CLI image (Alpine, PHP 8.3, MariaDB client). Runs as uid 33, which is
+# www-data in the (Debian) WordPress image: files restored into the wp_files
+# volume must be writable by Apache (uploads, plugin updates).
 FROM wordpress:cli-php8.3
 USER root
 RUN apk add --no-cache bash git tzdata \
- && mkdir -p /data /cache \
- && chown www-data:www-data /data /cache
+ && mkdir -p /data/public_html /cache \
+ && chown -R 33:33 /data /cache
 COPY --from=build /out/ /usr/local/bin/
 COPY --from=restic /usr/bin/restic /usr/local/bin/restic
 COPY wordpress/tools/olamundo.sh /usr/local/bin/olamundo
-# restic's cache lives in a named volume (see docker-compose.yml).
+# restic's cache and the WordPress files live in named volumes (see
+# docker-compose.yml); an empty volume takes the owner of these directories.
 ENV RESTIC_CACHE_DIR=/cache
 # Local time in restic's listings (snapshot times are stored in UTC anyway).
 ENV TZ=Europe/Warsaw
-USER www-data
+# uid 33 has no home in this image (WP-CLI keeps its cache there).
+ENV HOME=/tmp
+USER 33:33
 WORKDIR /data
 ENTRYPOINT ["/usr/local/bin/olamundo"]

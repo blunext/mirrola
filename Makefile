@@ -20,6 +20,9 @@
 #                              # pages, changed visible text, broken internal links.
 #                              # Report in .check/report.txt. Run after every plugin/WP change.
 #
+#   make start                 # put the latest R2 snapshot into the local WordPress (files
+#                              # volume: only differences; DB: replaced) and start it.
+#                              # Whatever wasn't snapshotted is lost.
 #   make snapshot              # back up the local WordPress (files + DB dump) with restic
 #                              # to Cloudflare R2 (tools container; settings in wordpress/.env)
 #   make snapshot MSG="..."    # same, with the message as a snapshot tag
@@ -62,7 +65,7 @@ snapshot: export SNAPSHOT_MSG = $(if $(filter command line,$(origin MSG)),$(MSG)
 # or the crawler changed (a no-op otherwise).
 TOOLS = cd wordpress && docker compose run --rm --build
 
-.PHONY: build test clean-site crawl serve publish release snapshot snapshots snapshot-check snapshot-init sync sync-skip check
+.PHONY: build test clean-site crawl serve publish release start snapshot snapshots snapshot-check snapshot-init sync sync-skip check
 
 build:
 	go build -o $(BIN) .
@@ -96,7 +99,7 @@ clean-site:
 # WordPress stopped, a crawl would otherwise leave DIR empty.
 crawl: build
 	@curl -fsS -o /dev/null --max-time 30 "$(URL)/" \
-		|| { echo "$(URL) does not answer; is the local WordPress running? (cd wordpress && docker compose up -d)"; exit 1; }
+		|| { echo "$(URL) does not answer; is the local WordPress running? (make start)"; exit 1; }
 	@$(MAKE) --no-print-directory clean-site
 	./$(BIN) -url "$(URL)" -site-url "$(SITE_URL)" -dir "$(DIR)" -delay $(DELAY) -concurrency $(CONCURRENCY) $(if $(STRICT),-strict)
 
@@ -164,6 +167,15 @@ snapshots:
 snapshot-check:
 	$(TOOLS) tools check $(if $(READ_DATA),--read-data)
 
+# Every session starts from the latest snapshot: WordPress is stopped while
+# the tools container replaces its files (wp_files volume) and the DB, then
+# started again. A failed restore leaves WordPress stopped.
+start:
+	cd wordpress && docker compose stop wordpress
+	$(TOOLS) tools-restore start
+	cd wordpress && docker compose up -d --wait wordpress
+	@echo "WordPress: $(URL)"
+
 # Creates the restic repository (once, for a new bucket).
 snapshot-init:
 	$(TOOLS) tools init
@@ -173,7 +185,10 @@ snapshot-init:
 # on Pages and the host only lags behind), so sync would destroy local-only
 # posts and uploads and bring back what the cleanup removed. It refuses
 # without FORCE=1; the script then asks for confirmation as well.
-SYNC_GUARD = @test -n "$(FORCE)" || { echo "Refusing: the local WordPress is the source of truth and sync would overwrite it with the old host's copy. Back it up first, then: make $@ FORCE=1"; exit 1; }
+# Obsolete since the files moved to the wp_files volume (sync-from-host.sh
+# still writes to the old public_html and would wipe it with git clean); it
+# goes away with the cleanup step of the core (docs/plan-wordpress-data.md).
+SYNC_GUARD = @echo "make $@ is obsolete: the source of truth is the latest R2 snapshot (make start)."; exit 1
 
 sync:
 	$(SYNC_GUARD)
@@ -189,7 +204,7 @@ sync-skip:
 # look at the [FAIL] sections before publishing.
 check:
 	@docker inspect -f '{{.State.Running}}' wordpress 2>/dev/null | grep -q true \
-		|| { echo "The local WordPress is not running (cd wordpress && docker compose up -d)."; exit 1; }
+		|| { echo "The local WordPress is not running (make start)."; exit 1; }
 	@mkdir -p .check
 	docker run --rm --network wordpress_wordpress_network \
 		-v "$(CURDIR)":/src:ro -v "$(DIR)":/site:ro -v "$(CURDIR)/.check":/report \
