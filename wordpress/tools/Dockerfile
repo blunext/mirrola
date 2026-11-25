@@ -14,10 +14,10 @@ RUN CGO_ENABLED=0 go build -o /out/mirrola . \
 # version here.
 FROM restic/restic:0.20.0 AS restic
 
-# WP-CLI image (Alpine, PHP 8.3, MariaDB client). Runs as uid 33, which is
+# WP-CLI image (Alpine, PHP 8.4, MariaDB client). Runs as uid 33, which is
 # www-data in the (Debian) WordPress image: files restored into the wp_files
 # volume must be writable by Apache (uploads, plugin updates).
-FROM wordpress:cli-php8.3
+FROM wordpress:cli-php8.4
 USER root
 # openssh-client: git over SSH with the deploy key; socat: the localhost:8000
 # forwarder for crawling (WordPress answers only to its own address).
