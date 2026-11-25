@@ -1,71 +1,55 @@
-# Lokalny WordPress (kopia olamundo.pl)
+# Lokalny WordPress olamundo.pl
 
-Strona: http://localhost:8000, phpMyAdmin: http://localhost:8080.
+Źródłem prawdy jest ostatni snapshot w Cloudflare R2 (restic). Każda sesja zaczyna się od niego
+i kończy nowym snapshotem. Na komputerze potrzebny jest tylko Docker; wszystko inne działa
+w kontenerze narzędzi (`tools/`). Polecenia uruchamia się w katalogu głównym repo.
 
-Hasła do bazy oraz klucze i salty WordPressa są tylko w `.env` (poza gitem). Wzór z listą zmiennych: `.env.example`; salty to 8 losowych ciągów, np. `openssl rand -base64 48`. `wp-config.php` czyta je przez `getenv`, a przy braku zmiennej zatrzymuje się z komunikatem.
+## Nowy komputer
 
-Kroki 1–4 robi automatycznie `make sync` w katalogu repo (`./sync-from-host.sh`).
-`make sync-skip` (`--skip-download`) używa już pobranych plików.
-Zastępuje lokalną bazę i pliki kopią z serwera.
+1. Docker i klon tego repo (`git clone https://github.com/blunext/mirrola.git`).
+2. `wordpress/.env` według `.env.example`. Wartości (hasła bazy, salty, hasło resticu,
+   token R2) są w menedżerze haseł; bez hasła resticu snapshotów nie da się odczytać.
+   `PUBLISHER` to nazwa tego komputera (podpis commitów publikacji).
+3. Klucz wdrożeniowy do repo strony (tylko do publikacji):
+   ```bash
+   cd wordpress && mkdir -p deploy && chmod 700 deploy
+   ssh-keygen -t ed25519 -N '' -C 'olamundo deploy (<komputer>)' -f deploy/olamundo_deploy_key
+   cat deploy/olamundo_deploy_key.pub
+   ```
+   Klucz publiczny: https://github.com/blunext/olamundo/settings/keys → Add deploy key,
+   tytuł = nazwa komputera, zaznaczone „Allow write access”.
+4. `make start` (pierwszy raz pobiera ok. 570 MB z R2).
 
-## 1. Eksport z serwera
-
-```bash
-ssh om
-grep DB_ ~/domains/olamundo.pl/public_html/wp-config.php
-mysqldump --single-transaction --default-character-set=utf8mb4 --no-tablespaces \
-  -u olamundo_wp1 -p olamundo_wp1 > wordpress_db.sql
-tar -czf wordpress.tar.gz -C ~/domains/olamundo.pl --exclude='./public_html/wp-content/cache' --exclude='./public_html/wp-content/wflogs' ./public_html
-tar -tzf wordpress.tar.gz | head -3      # ./public_html/...
-ls -lh wordpress.tar.gz
-exit
-```
-
-```bash
-cd wordpress
-scp om:wordpress_db.sql om:wordpress.tar.gz .
-```
-
-## 2. Rozpakowanie
-
-Bez `wp-config.php` i `.htaccess`, bo lokalne wersje są w gicie. Lokalny `wp-config.php` bierze dane bazy i salty z `.env` i zapisuje błędy PHP do `wp-content/debug.log` zamiast na stronę.
+## Sesja
 
 ```bash
-tar -xzf wordpress.tar.gz --exclude='./public_html/wp-config.php' --exclude='./public_html/.htaccess'
-git status public_html   # nic; zmieniony wp-config.php lub .htaccess: git checkout -- public_html
+make start      # ostatni snapshot z R2 → WordPress na http://localhost:8000
+                # (pisanie w /wp-admin)
+make stop       # pyta, czy wypchnąć zmiany do R2, potem zatrzymuje WordPressa
 ```
 
-## 3. Import bazy
+Co nie zostało wypchnięte do R2 (`make snapshot` albo „t” w `make stop`), przepada przy
+następnym `make start`.
 
-Importujemy oryginalny dump. Adresy zmieniamy dopiero w bazie (krok 4), nie w pliku:
-`sed` i `go run ./replace` psują zserializowane dane PHP.
+## Publikacja
 
 ```bash
-docker compose up -d db
-until [ "$(docker inspect -f '{{.State.Health.Status}}' db)" = healthy ]; do sleep 2; done
-docker exec -i db sh -c 'exec mysql -u"$MYSQL_USER" -p"$MYSQL_PASSWORD" "$MYSQL_DATABASE"' < wordpress_db.sql
-docker compose up -d
+make crawl      # crawl lokalnego WordPressa do repo strony (wolumen "site")
+make serve      # podgląd na http://localhost:8081 (Ctrl-C kończy)
+make publish    # podgląd na Pages: https://development.olamundo-3xg.pages.dev
+make release    # olamundo.pl
 ```
 
-Od nowa: `docker compose down -v` (usuwa bazę) i ponownie krok 3.
+Po każdej zmianie wtyczek, WordPressa albo PHP: `make check` (raport w `.check/report.txt`).
 
-## 4. Adresy na localhost
+## WP-CLI
 
 ```bash
-wp() { docker compose run --rm wpcli wp "$@"; }
-wp search-replace https://www.olamundo.pl http://localhost:8000 --all-tables-with-prefix --skip-columns=guid
-wp search-replace http://www.olamundo.pl  http://localhost:8000 --all-tables-with-prefix --skip-columns=guid
-wp search-replace https://olamundo.pl     http://localhost:8000 --all-tables-with-prefix --skip-columns=guid
-wp search-replace http://olamundo.pl      http://localhost:8000 --all-tables-with-prefix --skip-columns=guid
-wp search-replace 'https:\/\/olamundo.pl' 'http:\/\/localhost:8000' --all-tables-with-prefix --skip-columns=guid
-wp search-replace 'http:\/\/olamundo.pl'  'http:\/\/localhost:8000' --all-tables-with-prefix --skip-columns=guid
-wp search-replace /home/olamundo/domains/olamundo.pl/public_html /var/www/html --all-tables-with-prefix
-wp option get siteurl && wp option get home   # http://localhost:8000
-wp cache flush
+cd wordpress && docker compose run --rm --entrypoint wp tools --path=/data/public_html <polecenie>
 ```
 
-`--dry-run` pokazuje liczbę zmian bez zapisu. Ostrzeżenie „Skipping an uninitialized class” jest niegroźne.
+Pliki WordPressa są tu tylko do odczytu; baza jest zapisywalna. Adresy w bazie zmienia się
+przez `wp search-replace` (rozumie zserializowane dane PHP), nigdy `sed` na dumpie.
 
-## 5. Crawl
-
-W katalogu głównym repo: `make crawl`, potem `make serve`.
+Pierwszy import ze starego hostingu (`sync-from-host.sh`, ten README w starszej wersji) jest
+w historii gita (commit e01a86f i wcześniejsze).

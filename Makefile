@@ -61,7 +61,7 @@ crawl: export STRICT := $(STRICT)
 check: export BASE := $(BASE)
 
 .PHONY: build test start stop snapshot snapshots snapshot-check snapshot-init \
-	crawl serve publish release check sync sync-skip
+	crawl serve publish release check
 
 # Development of the crawler itself (needs Go on the host).
 build:
@@ -132,9 +132,3 @@ check:
 	$(WP_RUNNING)
 	@mkdir -p .check
 	$(TOOLS) -e DELAY -e CONCURRENCY -e BASE tools site-check
-
-# Obsolete since the files moved to the wp_files volume (sync-from-host.sh
-# still writes to the old public_html and would wipe it with git clean); it
-# goes away with the cleanup step of the core (docs/plan-wordpress-data.md).
-sync sync-skip:
-	@echo "make $@ is obsolete: the source of truth is the latest R2 snapshot (make start)."; exit 1

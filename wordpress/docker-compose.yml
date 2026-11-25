@@ -1,5 +1,6 @@
-# Environment shared by wordpress and wpcli (both load wp-config.php, which
-# takes every secret from here). ":?" stops compose when .env lacks a value.
+# Environment of the wordpress service (wp-config.php takes every secret from
+# here; the tools services get the whole .env through env_file). ":?" stops
+# compose when .env lacks a value.
 x-wp-env: &wp-env
   WORDPRESS_DB_HOST: ${WORDPRESS_DB_HOST:?set in .env}
   WORDPRESS_DB_USER: ${WORDPRESS_DB_USER:?set in .env}
@@ -62,40 +63,7 @@ services:
       start_period: 1m
       start_interval: 2s
 
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin:latest
-    depends_on:
-      db:
-        condition: service_healthy
-    restart: always
-    ports:
-      - "8080:80"
-    environment:
-      PMA_HOST: db
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-    networks:
-      - wordpress_network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost"]
-      interval: 1m
-      timeout: 10s
-      retries: 3
-
-  # WP-CLI for one-off commands (search-replace after an import). Not started by
-  # "docker compose up"; run it with: docker compose run --rm wpcli <args>
-  wpcli:
-    image: wordpress:cli-php8.3
-    profiles: ["tools"]
-    depends_on:
-      db:
-        condition: service_healthy
-    environment: *wp-env
-    volumes:
-      - wp_files:/var/www/html
-    networks:
-      - wordpress_network
-
-  # Tools: snapshots to R2 (restic), start from R2, later crawl and publish.
+  # Tools: snapshots to R2 (restic), start from R2, crawl and publish, WP-CLI.
   # Built from this repository (wordpress/tools/Dockerfile); run through make,
   # e.g. docker compose run --rm --build tools snapshot.
   # "tools" sees the WordPress files read-only (snapshots); "tools-restore"
