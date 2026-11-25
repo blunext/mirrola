@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project goals
 
-Mirrola turns a self-managed WordPress blog (`olamundo.pl`) into a static site. Since 2026-11-23 `olamundo.pl` is that static site on Cloudflare Pages; the WordPress it is made from runs locally in Docker (`wordpress/`) and is the source of truth. The old shared-hosting copy still exists but gets no web traffic and lags behind. There are two goals:
+Mirrola turns a self-managed WordPress blog (`olamundo.pl`) into a static site. Since 2026-11-23 `olamundo.pl` is that static site on Cloudflare Pages; the WordPress it is made from runs locally in Docker (`wordpress/`) and is the source of truth. The old shared hosting was shut down in 2026-11; the source of truth is the latest restic snapshot in Cloudflare R2. There are two goals:
 
 1. **Static mirror → Cloudflare Pages.** Crawl the WordPress site, rewrite every same-host link to a root-relative path, strip WordPress/Cloudflare cruft, and write a self-contained tree that can be deployed to Cloudflare Pages. This is what the Go crawler does.
 2. **Portable WordPress → crawl → publish.** Pull WordPress (files + DB) off the hosting provider and run it in Docker, either locally or on a public on-demand Docker host. New posts get written there, then the crawler mirrors that instance and the output goes to Pages. The local docker-compose part and the Pages deploy (`make publish` / `make release`) exist; on-demand cloud hosting (planned for two authors) does not yet.
@@ -101,5 +101,5 @@ go test ./crawler -coverprofile=crawler/cover.out && go tool cover -html=crawler
 ## Cloudflare Pages and the domain
 
 - Pages project `olamundo` (subdomain `olamundo-3xg.pages.dev`; `olamundo.pages.dev` belongs to someone else), connected to GitHub `blunext/olamundo` (private; the `site` volume). Production branch `main` → olamundo.pl; branch `development` → preview https://development.olamundo-3xg.pages.dev. Deploy status: `gh api repos/blunext/olamundo/commits/<sha>/check-runs` (a commit deployed as preview and then released may not get a second check run; check the site itself).
-- DNS is in Cloudflare: `olamundo.pl` is a proxied CNAME to `olamundo-3xg.pages.dev` (Pages custom domain); `www` → `olamundo.pl` is a Cloudflare Redirect Rule (301, keeps path and query), independent of any origin. Always Use HTTPS is on. Mail records (MX/SPF) still point at the old host's provider; the domain sends no mail.
+- DNS is in Cloudflare: `olamundo.pl` is a proxied CNAME to `olamundo-3xg.pages.dev` (Pages custom domain); `www` → `olamundo.pl` is a Cloudflare Redirect Rule (301, keeps path and query), independent of any origin. Always Use HTTPS is on. The domain has no mail: no MX, SPF `v=spf1 -all`, DMARC `p=reject` (since 2026-11-23); no DNS records for the old host's services (mail, ftp, cpanel) remain.
 
