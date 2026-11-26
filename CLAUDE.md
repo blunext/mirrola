@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Mirrola turns a self-managed WordPress blog (`olamundo.pl`) into a static site. Since 2026-11-23 `olamundo.pl` is that static site on Cloudflare Pages; the WordPress it is made from runs locally in Docker (`wordpress/`) and is the source of truth. The old shared hosting was shut down in 2026-11; the source of truth is the latest restic snapshot in Cloudflare R2. There are two goals:
 
 1. **Static mirror → Cloudflare Pages.** Crawl the WordPress site, rewrite every same-host link to a root-relative path, strip WordPress/Cloudflare cruft, and write a self-contained tree that can be deployed to Cloudflare Pages. This is what the Go crawler does.
-2. **Portable WordPress → crawl → publish.** Pull WordPress (files + DB) off the hosting provider and run it in Docker, either locally or on a public on-demand Docker host. New posts get written there, then the crawler mirrors that instance and the output goes to Pages. The local docker-compose part and the Pages deploy (`make publish` / `make release`) exist; on-demand cloud hosting (planned for two authors) does not yet.
+2. **Portable WordPress → crawl → publish.** WordPress (files + DB) lives as restic snapshots in Cloudflare R2 and runs in Docker on any computer that has Docker (`make start` restores the latest snapshot, `make stop` / `make snapshot` push the changes back). New posts get written there, then the crawler mirrors that instance and the output goes to Pages (`make publish` / `make release`). Works on the owner's Mac (README checked on an empty Docker 2026-11-26); the second author (Windows: local Docker/WSL2 or an on-demand cloud instance, not decided) is not set up yet.
 
 ## Working rules
 
