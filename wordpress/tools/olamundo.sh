@@ -153,7 +153,9 @@ snapshot() {
 # git over SSH with this computer's deploy key, GitHub's pinned host key, and
 # a commit identity naming the computer (PUBLISHER in .env), no real e-mail.
 git_setup() {
-  [ -f "$DEPLOY_KEY" ] || die "brak klucza wordpress/deploy/olamundo_deploy_key"
+  # Runs as uid 33: on Linux (or WSL2's own file system) a key only its owner
+  # can read is invisible here; Docker Desktop's file sharing doesn't check.
+  [ -r "$DEPLOY_KEY" ] || die "nie mogę odczytać klucza wordpress/deploy/olamundo_deploy_key (brak pliku albo uprawnień: kontener czyta go jako uid 33)"
   [ -n "${PUBLISHER:-}" ] || die "brak PUBLISHER w wordpress/.env (nazwa komputera, np. mac)"
   # ssh wants a private key only its user can read.
   install -m 600 "$DEPLOY_KEY" /tmp/deploy_key
@@ -216,7 +218,7 @@ crawl() {
   touch "$CRAWL_OK"
   echo "== Zmiany względem origin/$PREVIEW:"
   git -C "$SITE" --no-pager diff --cached --shortstat
-  echo "Dalej: make serve (podgląd na Macu), potem make publish"
+  echo "Dalej: make serve (podgląd na tym komputerze), potem make publish"
 }
 
 serve() {
