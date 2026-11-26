@@ -7,8 +7,9 @@ w kontenerze narzędzi (`tools/`). Polecenia uruchamia się w katalogu głównym
 ## Nowy komputer
 
 1. Docker (ok. 3 GB wolnego miejsca na jego dysku: obrazy i dane WordPressa) i klon tego repo (`git clone https://github.com/blunext/mirrola.git`).
-2. `wordpress/.env` według `.env.example`. Wartości (hasła bazy, salty, hasło resticu,
-   token R2) są w menedżerze haseł; bez hasła resticu snapshotów nie da się odczytać.
+2. `wordpress/.env` według `.env.example` (skopiuj go i uzupełnij). Wartości (hasła bazy,
+   salty, hasło resticu, token R2) dostajesz od właściciela; bez hasła resticu snapshotów
+   nie da się odczytać.
    `PUBLISHER` to nazwa tego komputera (podpis commitów publikacji).
 3. Klucz wdrożeniowy do repo strony (tylko do publikacji):
    ```bash
